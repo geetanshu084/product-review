@@ -37,7 +37,7 @@ class AmazonScraper:
         redis_password: Optional[str] = None,
         cache_ttl: int = 86400,  # 24 hours in seconds
         use_advanced_scraper: bool = False,  # Use Selenium for enhanced review scraping
-        max_reviews: int = 100  # Max reviews to scrape (only with advanced scraper)
+        max_reviews: int = 100  # Max reviews to scrape (default: 100, max: 200)
     ):
         """
         Initialize the scraper
@@ -52,7 +52,7 @@ class AmazonScraper:
             redis_password: Redis password (optional)
             cache_ttl: Cache time-to-live in seconds (default: 86400 = 24 hours)
             use_advanced_scraper: Use Selenium-based advanced scraper for enhanced reviews (default: False)
-            max_reviews: Maximum reviews to scrape with advanced scraper (default: 100, max: 200)
+            max_reviews: Maximum reviews to scrape (default: 100, max: 200) - works with both scrapers
         """
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
@@ -225,15 +225,22 @@ class AmazonScraper:
                         reviews.extend(additional_reviews)
             else:
                 # Traditional scraping (original method)
+                print(f"📄 Using traditional scraper (target: {self.max_reviews} reviews)")
+
                 # First try: Get reviews from the product page itself (doesn't require login)
                 reviews = self._scrape_reviews_from_product_page(soup)
-                print(f"Scraped {len(reviews)} reviews from product page")
+                print(f"  ✓ Scraped {len(reviews)} reviews from product page")
 
-                # Second try: If we need more reviews, try the dedicated reviews page
-                if len(reviews) < 200:
-                    additional_reviews = self._scrape_reviews(asin, domain=domain, max_reviews=200-len(reviews))
+                # Second try: If we need more reviews, try the dedicated reviews page with pagination
+                if len(reviews) < self.max_reviews:
+                    print(f"  🔄 Fetching more reviews from dedicated reviews page...")
+                    additional_reviews = self._scrape_reviews(asin, domain=domain, max_reviews=self.max_reviews-len(reviews))
                     reviews.extend(additional_reviews)
-                    print(f"Scraped {len(additional_reviews)} additional reviews from reviews page")
+                    print(f"  ✓ Scraped {len(additional_reviews)} additional reviews from paginated reviews page")
+
+                # Trim to max_reviews if we got more than requested
+                if len(reviews) > self.max_reviews:
+                    reviews = reviews[:self.max_reviews]
 
             print(f"Total reviews scraped: {len(reviews)}\n")
             product_data['reviews'] = reviews
@@ -807,11 +814,13 @@ class AmazonScraper:
                 # Construct URL with page number for the specific domain
                 reviews_url = f"https://www.{domain}/product-reviews/{asin}/ref=cm_cr_arp_d_paging_btm_next_{page_num}?ie=UTF8&reviewerType=all_reviews&pageNumber={page_num}"
 
+                print(f"    📄 Page {page_num}: Fetching reviews... (Total so far: {len(reviews)}/{max_reviews})")
+
                 try:
                     response = self.session.get(reviews_url, timeout=20)
                     response.raise_for_status()
                 except requests.exceptions.RequestException as req_error:
-                    print(f"Request error on page {page_num}: {str(req_error)}")
+                    print(f"    ❌ Request error on page {page_num}: {str(req_error)}")
                     break
 
                 time.sleep(2)  # Respectful delay between page requests
@@ -828,7 +837,10 @@ class AmazonScraper:
                         review_divs = soup.find_all('div', {'id': re.compile(r'customer_review-.*')})
 
                     if not review_divs:
+                        print(f"    ⚠ No more reviews found on page {page_num}")
                         break
+
+                print(f"    ✓ Found {len(review_divs)} review containers on page {page_num}")
 
                 # Extract reviews from current page
                 for review_div in review_divs:

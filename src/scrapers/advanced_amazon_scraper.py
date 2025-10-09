@@ -21,7 +21,7 @@ from fake_useragent import UserAgent
 class AdvancedAmazonScraper:
     """Advanced scraper using Selenium for comprehensive review extraction"""
 
-    def __init__(self, headless: bool = True, max_reviews: int = 100):
+    def __init__(self, headless: bool = True, max_reviews: int = 100):for
         """
         Initialize the advanced scraper
 
