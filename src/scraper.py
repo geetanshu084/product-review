@@ -35,7 +35,9 @@ class AmazonScraper:
         redis_port: int = 6379,
         redis_db: int = 0,
         redis_password: Optional[str] = None,
-        cache_ttl: int = 86400  # 24 hours in seconds
+        cache_ttl: int = 86400,  # 24 hours in seconds
+        use_advanced_scraper: bool = False,  # Use Selenium for enhanced review scraping
+        max_reviews: int = 100  # Max reviews to scrape (only with advanced scraper)
     ):
         """
         Initialize the scraper
@@ -49,12 +51,16 @@ class AmazonScraper:
             redis_db: Redis database number
             redis_password: Redis password (optional)
             cache_ttl: Cache time-to-live in seconds (default: 86400 = 24 hours)
+            use_advanced_scraper: Use Selenium-based advanced scraper for enhanced reviews (default: False)
+            max_reviews: Maximum reviews to scrape with advanced scraper (default: 100, max: 200)
         """
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
         self.use_llm_extraction = use_llm_extraction
         self.use_cache = use_cache
         self.cache_ttl = cache_ttl
+        self.use_advanced_scraper = use_advanced_scraper
+        self.max_reviews = min(max_reviews, 200)  # Cap at 200
 
         # Initialize Redis cache if enabled
         if self.use_cache:
@@ -185,19 +191,49 @@ class AmazonScraper:
                 'reviews': []
             }
 
-            # Scrape reviews - try from product page first, then dedicated reviews page
+            # Scrape reviews - use advanced scraper if enabled, otherwise use traditional
             domain = self._extract_domain(url)
             print(f"\nAttempting to scrape reviews for ASIN: {asin} from {domain}")
 
-            # First try: Get reviews from the product page itself (doesn't require login)
-            reviews = self._scrape_reviews_from_product_page(soup)
-            print(f"Scraped {len(reviews)} reviews from product page")
+            if self.use_advanced_scraper:
+                # Use Selenium-based advanced scraper for enhanced review extraction
+                try:
+                    from src.scrapers import AdvancedAmazonScraper
+                    print(f"🚀 Using advanced Selenium scraper (target: {self.max_reviews} reviews)")
 
-            # Second try: If we need more reviews, try the dedicated reviews page
-            if len(reviews) < 200:
-                additional_reviews = self._scrape_reviews(asin, domain=domain, max_reviews=200-len(reviews))
-                reviews.extend(additional_reviews)
-                print(f"Scraped {len(additional_reviews)} additional reviews from reviews page")
+                    advanced_scraper = AdvancedAmazonScraper(headless=True, max_reviews=self.max_reviews)
+                    result = advanced_scraper.scrape_reviews(url, prioritize_verified=True)
+
+                    reviews = result.get('reviews', [])
+                    print(f"✓ Advanced scraper extracted {len(reviews)} reviews")
+
+                except ImportError as e:
+                    print(f"⚠ Advanced scraper not available: {str(e)}")
+                    print("  Falling back to traditional scraping...")
+                    # Fallback to traditional scraping
+                    reviews = self._scrape_reviews_from_product_page(soup)
+                    if len(reviews) < 50:
+                        additional_reviews = self._scrape_reviews(asin, domain=domain, max_reviews=50-len(reviews))
+                        reviews.extend(additional_reviews)
+                except Exception as e:
+                    print(f"⚠ Advanced scraper failed: {str(e)}")
+                    print("  Falling back to traditional scraping...")
+                    # Fallback to traditional scraping
+                    reviews = self._scrape_reviews_from_product_page(soup)
+                    if len(reviews) < 50:
+                        additional_reviews = self._scrape_reviews(asin, domain=domain, max_reviews=50-len(reviews))
+                        reviews.extend(additional_reviews)
+            else:
+                # Traditional scraping (original method)
+                # First try: Get reviews from the product page itself (doesn't require login)
+                reviews = self._scrape_reviews_from_product_page(soup)
+                print(f"Scraped {len(reviews)} reviews from product page")
+
+                # Second try: If we need more reviews, try the dedicated reviews page
+                if len(reviews) < 200:
+                    additional_reviews = self._scrape_reviews(asin, domain=domain, max_reviews=200-len(reviews))
+                    reviews.extend(additional_reviews)
+                    print(f"Scraped {len(additional_reviews)} additional reviews from reviews page")
 
             print(f"Total reviews scraped: {len(reviews)}\n")
             product_data['reviews'] = reviews

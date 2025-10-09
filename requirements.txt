@@ -7,3 +7,6 @@ langchain-community==0.0.20
 python-dotenv==1.0.1
 redis==5.0.1
 lxml==5.1.0
+selenium==4.16.0
+webdriver-manager==4.0.1
+fake-useragent==1.4.0
