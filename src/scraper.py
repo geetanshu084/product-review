@@ -23,7 +23,11 @@ class AmazonScraper:
         'Accept-Encoding': 'gzip, deflate, br',
         'DNT': '1',
         'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1'
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0'
     }
 
     def __init__(
@@ -225,22 +229,13 @@ class AmazonScraper:
                         reviews.extend(additional_reviews)
             else:
                 # Traditional scraping (original method)
-                print(f"📄 Using traditional scraper (target: {self.max_reviews} reviews)")
+                print(f"📄 Using traditional scraper")
 
-                # First try: Get reviews from the product page itself (doesn't require login)
+                # Get reviews from the product page (typically 8-10 reviews)
                 reviews = self._scrape_reviews_from_product_page(soup)
                 print(f"  ✓ Scraped {len(reviews)} reviews from product page")
-
-                # Second try: If we need more reviews, try the dedicated reviews page with pagination
-                if len(reviews) < self.max_reviews:
-                    print(f"  🔄 Fetching more reviews from dedicated reviews page...")
-                    additional_reviews = self._scrape_reviews(asin, domain=domain, max_reviews=self.max_reviews-len(reviews))
-                    reviews.extend(additional_reviews)
-                    print(f"  ✓ Scraped {len(additional_reviews)} additional reviews from paginated reviews page")
-
-                # Trim to max_reviews if we got more than requested
-                if len(reviews) > self.max_reviews:
-                    reviews = reviews[:self.max_reviews]
+                print(f"  ℹ️  Note: Due to Amazon's JavaScript-based reviews page and bot protection,")
+                print(f"     pagination is not possible with traditional HTTP scraping.")
 
             print(f"Total reviews scraped: {len(reviews)}\n")
             product_data['reviews'] = reviews
@@ -793,6 +788,108 @@ class AmazonScraper:
             print(f"Error extracting category: {str(e)}")
 
         return category if category else "Category not found"
+
+    def _scrape_reviews_multipage(self, asin: str, max_reviews: int = 200, domain: str = "amazon.com", sort_param: str = '') -> List[Dict]:
+        """
+        Scrape customer reviews from reviews pages using the "See all reviews" URL pattern
+
+        Args:
+            asin: Product ASIN
+            max_reviews: Maximum number of reviews to scrape (default 200)
+            domain: Amazon domain (e.g., amazon.com, amazon.in)
+            sort_param: URL parameter for sorting (e.g., '&sortBy=helpful')
+
+        Returns:
+            List of review dictionaries
+        """
+        reviews = []
+        page_num = 1
+
+        try:
+            while len(reviews) < max_reviews and page_num <= 10:  # Max 10 pages
+                # Use the exact URL pattern from "See all reviews" button
+                if page_num == 1:
+                    # First page - use the "See all reviews" URL pattern
+                    reviews_url = f"https://www.{domain}/product-reviews/{asin}/ref=cm_cr_dp_d_show_all_btm?ie=UTF8&reviewerType=all_reviews{sort_param}"
+                else:
+                    # Subsequent pages - use pagination pattern
+                    reviews_url = f"https://www.{domain}/product-reviews/{asin}/ref=cm_cr_arp_d_paging_btm_next_{page_num}?ie=UTF8&reviewerType=all_reviews&pageNumber={page_num}{sort_param}"
+
+                print(f"      🔗 Page {page_num}/{10} (sort: {sort_param or 'default'})...")
+
+                try:
+                    # Add Referer header to mimic coming from product page
+                    headers = self.session.headers.copy()
+                    if page_num == 1:
+                        headers['Referer'] = f"https://www.{domain}/dp/{asin}"
+                    else:
+                        headers['Referer'] = f"https://www.{domain}/product-reviews/{asin}"
+
+                    response = self.session.get(reviews_url, headers=headers, timeout=20)
+                    response.raise_for_status()
+                except requests.exceptions.RequestException as req_error:
+                    print(f"      ❌ Request failed: {str(req_error)[:60]}")
+                    break
+
+                time.sleep(2)  # Respectful delay
+
+                soup = BeautifulSoup(response.content, 'lxml')
+
+                # Check for bot detection
+                page_text = soup.get_text().lower()
+                if 'robot check' in page_text or 'captcha' in page_text:
+                    print(f"      ⚠ Bot detection triggered, stopping")
+                    break
+
+                # Find review containers
+                review_divs = soup.find_all('div', {'data-hook': 'review'})
+
+                if not review_divs:
+                    # Try alternate selector
+                    review_divs = soup.find_all('div', {'id': re.compile(r'customer_review-.*')})
+
+                if not review_divs:
+                    print(f"      ⚠ No reviews found")
+                    if page_num == 1:
+                        print(f"      💡 Tip: This might be bot detection. Try again later.")
+                    break
+
+                print(f"      ✓ Found {len(review_divs)} reviews")
+
+                # Extract reviews
+                for review_div in review_divs:
+                    if len(reviews) >= max_reviews:
+                        break
+
+                    review_data = {
+                        'title': self._extract_review_title(review_div),
+                        'rating': self._extract_review_rating(review_div),
+                        'text': self._extract_review_text(review_div),
+                        'author': self._extract_review_author(review_div),
+                        'date': self._extract_review_date(review_div),
+                        'verified': self._extract_review_verified(review_div)
+                    }
+
+                    if review_data['text'] or review_data['title']:
+                        reviews.append(review_data)
+
+                # Check for next page button
+                next_button = soup.find('li', {'class': 'a-last'})
+                if next_button:
+                    # Check if it's disabled
+                    if 'a-disabled' in next_button.get('class', []):
+                        print(f"      ℹ️  Reached last page")
+                        break
+                else:
+                    # No next button found
+                    break
+
+                page_num += 1
+
+        except Exception as e:
+            print(f"      ❌ Error: {str(e)[:60]}")
+
+        return reviews
 
     def _scrape_reviews(self, asin: str, max_reviews: int = 200, domain: str = "amazon.com") -> List[Dict]:
         """

@@ -123,15 +123,8 @@ def product_analysis_tab():
         help="Enter the full Amazon product URL"
     )
 
-    # Max reviews slider
-    max_reviews = st.slider(
-        "Maximum Reviews to Scrape",
-        min_value=10,
-        max_value=200,
-        value=100,
-        step=10,
-        help="Number of customer reviews to scrape (more reviews = better analysis but slower)"
-    )
+    # Note about review limitations
+    st.info("ℹ️ **Review Scraping Limit**: Due to Amazon's bot protection, we can scrape ~8-10 reviews from the product page. This is sufficient for basic sentiment analysis.")
 
     col1, col2, col3 = st.columns([1, 1, 3])
 
@@ -170,12 +163,11 @@ def product_analysis_tab():
         progress_bar = st.progress(0)
 
         try:
-            progress_text.text(f"🔄 Scraping product details (targeting {max_reviews} reviews)...")
+            progress_text.text(f"🔄 Scraping product details...")
             progress_bar.progress(10)
 
-            # Create scraper with specified max_reviews
-            scraper = AmazonScraper(max_reviews=max_reviews)
-            product_data = scraper.scrape_product(url)
+            # Use default scraper (gets ~8-10 reviews from product page)
+            product_data = st.session_state.scraper.scrape_product(url)
 
             progress_bar.progress(50)
             progress_text.text(f"✅ Scraped {len(product_data.get('reviews', []))} reviews")
