@@ -164,13 +164,24 @@ The application will open in your default browser at `http://localhost:8501`
 5. Use **Clear Chat** to start a new conversation
 
 **Example questions:**
+
+*Product Information:*
 - "What are the main complaints about this product?"
 - "Is this good for professional use?"
-- "What is the current price?" (triggers web search)
-- "Compare this with Samsung Galaxy S24" (triggers web search)
 - "What do customers say about durability?"
 - "Does it come with a warranty?"
-- "Is this available in stock?" (triggers web search)
+
+*Price Comparison (uses stored data):*
+- "Where can I buy this product?"
+- "What's the best price available?"
+- "Show me prices on Amazon vs Flipkart"
+- "Which platform has the cheapest price?"
+- "How much can I save if I buy from the cheapest platform?"
+
+*Current Information (triggers web search):*
+- "What is the current price?"
+- "Compare this with Samsung Galaxy S24"
+- "Is this available in stock?"
 
 ## Features in Detail
 
@@ -208,13 +219,21 @@ The application will open in your default browser at `http://localhost:8501`
 
 ### Conversational Q&A System (`src/chatbot.py`)
 
-- Redis-backed persistent memory
+- Redis-backed persistent memory with full product data (including price comparison)
 - Maintains conversation context
 - Session-based conversation history
-- Answers based on scraped product data
-- **Intelligent web search**: Automatically searches internet for current information
+- Answers based on:
+  - Scraped product data and reviews
+  - **Multi-platform price comparison** (saved to Redis during analysis)
+  - **Intelligent web search** for current information
+- Can answer questions like:
+  - "Where can I buy this product?" (uses price comparison data)
+  - "What's the best price available?" (uses price comparison data)
+  - "Show me prices on Amazon vs Flipkart" (uses price comparison data)
+  - "What is the current price?" (triggers web search)
+  - "Compare with Samsung Galaxy S24" (triggers web search)
 - Keyword-based search triggering (price, compare, latest, etc.)
-- Seamless integration of web search results into answers
+- Seamless integration of price comparison and web search results
 - Clear indication when information is unavailable
 - Memory survives application restarts
 - See [docs/WEB_SEARCH_QA.md](docs/WEB_SEARCH_QA.md) for details

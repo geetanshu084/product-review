@@ -189,12 +189,18 @@ USER QUESTION: {{input}}
 
 Guidelines:
 1. First check the PRODUCT DATA for the answer
-2. If web search results are provided, use them for current/updated information (prices, availability, comparisons)
-3. If the information is not available in either source, clearly state what information is missing
-4. Be specific and quote from reviews when relevant
-5. Keep answers concise but informative
-6. Maintain a helpful and professional tone
-7. When using web search data, mention "According to current search results..."
+2. PRICE COMPARISON data shows prices across different platforms (Amazon, Flipkart, eBay, etc.) - use this to answer questions about:
+   - Where to buy the product
+   - Price differences across platforms
+   - Best deals and potential savings
+   - Platform-specific pricing
+3. If web search results are provided, use them for current/updated information (prices, availability, comparisons)
+4. If the information is not available in either source, clearly state what information is missing
+5. Be specific and quote from reviews when relevant
+6. When recommending where to buy, mention the platform, price, and any savings
+7. Keep answers concise but informative
+8. Maintain a helpful and professional tone
+9. When using web search data, mention "According to current search results..."
 
 YOUR ANSWER:"""
 
@@ -296,6 +302,52 @@ YOUR ANSWER:"""
                 context.append(f"{i}. [{review.get('rating', 'N/A')}] {review.get('title', '')}")
                 context.append(f"   {review.get('text', '')[:200]}...")
             context.append("")
+
+        # Price comparison data
+        price_comparison = product_data.get('price_comparison')
+        if price_comparison and price_comparison.get('total_results', 0) > 0:
+            context.append("=== PRICE COMPARISON ACROSS PLATFORMS ===")
+            context.append(f"Total Results Found: {price_comparison['total_results']}")
+            context.append("")
+
+            # Price statistics
+            stats = price_comparison.get('price_stats', {})
+            if stats and stats.get('total_results', 0) > 0:
+                context.append("Price Statistics:")
+                currency = "INR"  # Default currency
+                context.append(f"  Minimum Price: {currency} {stats.get('min_price', 0):.2f}")
+                context.append(f"  Maximum Price: {currency} {stats.get('max_price', 0):.2f}")
+                context.append(f"  Average Price: {currency} {stats.get('avg_price', 0):.2f}")
+                context.append(f"  Median Price: {currency} {stats.get('median_price', 0):.2f}")
+                context.append("")
+
+            # Best deal
+            best_deal = price_comparison.get('best_deal')
+            if best_deal:
+                context.append("Best Deal Found:")
+                context.append(f"  Platform: {best_deal['platform'].upper()}")
+                context.append(f"  Seller: {best_deal['seller']}")
+                context.append(f"  Price: {best_deal['currency']} {best_deal['price']:.2f}")
+                context.append(f"  Rating: {best_deal.get('rating', 'N/A')}")
+                context.append(f"  Potential Savings: {best_deal['currency']} {best_deal['savings']:.2f} ({best_deal['savings_percent']:.1f}%)")
+                context.append(f"  URL: {best_deal.get('url', 'N/A')}")
+                context.append("")
+
+            # Platform breakdown (show top 3 from each platform)
+            platforms = price_comparison.get('price_comparison', {})
+            if platforms:
+                context.append("Price by Platform (showing lowest prices):")
+                for platform, items in platforms.items():
+                    if items:
+                        # Sort by price and show top 3
+                        sorted_items = sorted(items, key=lambda x: x['price'])[:3]
+                        context.append(f"  {platform.upper()} ({len(items)} total results):")
+                        for idx, item in enumerate(sorted_items, 1):
+                            context.append(f"    {idx}. {item['currency']} {item['price']:.2f} - {item['seller']}")
+                            if item.get('rating'):
+                                context.append(f"       Rating: {item['rating']}, Reviews: {item.get('reviews', 0)}")
+                            context.append(f"       URL: {item.get('url', 'N/A')}")
+                context.append("")
 
         return "\n".join(context)
 

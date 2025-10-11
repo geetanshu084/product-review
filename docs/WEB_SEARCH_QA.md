@@ -1,9 +1,35 @@
-# Web Search in Q&A Chatbot
+# Web Search & Price Comparison in Q&A Chatbot
 
 ## Overview
-The Q&A chatbot now includes intelligent web search capability that automatically searches the internet when users ask questions requiring current, up-to-date information.
+The Q&A chatbot includes two powerful features for answering product questions:
+1. **Intelligent Web Search**: Automatically searches the internet when users ask questions requiring current information
+2. **Multi-Platform Price Comparison**: Provides price data from Amazon, Flipkart, eBay, Walmart, and other platforms stored in Redis
 
 ## How It Works
+
+### Price Comparison Data in Q&A
+
+When a product is analyzed, price comparison data is automatically:
+1. Fetched from multiple e-commerce platforms using Serper API
+2. Saved to Redis along with product data
+3. Made available to the Q&A chatbot
+4. Formatted and included in the LLM context
+
+The chatbot can now answer questions like:
+- "Where can I buy this product?"
+- "What's the best price available?"
+- "Which platform has the cheapest price?"
+- "How much can I save if I buy from the cheapest platform?"
+- "Show me prices on Amazon vs Flipkart"
+- "Which seller offers the best deal?"
+
+**Example:**
+```
+User: "Where can I buy this product?"
+Bot: "According to the price comparison data, the best deal is on FLIPKART
+      at INR 55,900 from iNvent - Apple Premium Reseller. This offers
+      potential savings of INR 79,000 (58.5%) compared to other platforms."
+```
 
 ### Automatic Search Triggering
 The chatbot automatically detects when a question requires web search based on keywords:
@@ -135,15 +161,77 @@ This will test:
 - Questions that should use product data
 - Integration of search results into answers
 
+## Data Flow
+
+### Complete Product Analysis to Q&A Flow
+
+1. **Product Analysis** (`app.py` → `analyzer.py`):
+   - Scrape Amazon product data
+   - Fetch price comparison from multiple platforms
+   - Save complete product data (including price comparison) to Redis
+
+2. **Data Storage** (Redis):
+   - Key: `chat:{session_id}:product_data`
+   - Contains: Product info + Reviews + **Price comparison data**
+
+3. **Q&A Session** (`chatbot.py`):
+   - Retrieve product data from Redis (includes price comparison)
+   - Format product context with price comparison section
+   - Answer questions using:
+     - Product features and reviews
+     - **Price comparison across platforms**
+     - Web search results (when triggered)
+
+4. **Response Generation**:
+   - LLM receives full context including price comparison
+   - Answers questions about prices, platforms, best deals
+   - Provides specific platform and seller recommendations
+
 ## Technical Details
 
+### Price Comparison Context Format
+
+The chatbot formats price comparison data in the context as:
+
+```
+=== PRICE COMPARISON ACROSS PLATFORMS ===
+Total Results Found: 12
+
+Price Statistics:
+  Minimum Price: INR 55900.00
+  Maximum Price: INR 179900.00
+  Average Price: INR 89234.50
+  Median Price: INR 75000.00
+
+Best Deal Found:
+  Platform: FLIPKART
+  Seller: iNvent - Apple Premium Reseller
+  Price: INR 55900.00
+  Rating: 4.5
+  Potential Savings: INR 79000.00 (58.5%)
+  URL: https://...
+
+Price by Platform (showing lowest prices):
+  AMAZON (5 total results):
+    1. INR 67900.00 - Amazon.in
+       Rating: 4.6, Reviews: 1234
+       URL: https://...
+  FLIPKART (3 total results):
+    1. INR 55900.00 - iNvent
+       Rating: 4.5, Reviews: 567
+       URL: https://...
+```
+
 ### Implementation
-The web search feature is implemented in `src/chatbot.py`:
+The web search and price comparison features are implemented in `src/chatbot.py`:
 
 **Key Methods:**
+- `format_product_context(product_data)` - Formats all product data including price comparison
 - `_should_search_web(question)` - Detects if question needs web search
 - `_web_search(query, num_results)` - Performs web search via Serper API
-- `ask(session_id, question)` - Main method that integrates search
+- `ask(session_id, question)` - Main method that integrates all features
+- `set_product_data(session_id, product_data)` - Saves product data (with price comparison) to Redis
+- `get_product_data(session_id)` - Retrieves product data (with price comparison) from Redis
 
 **Search Keywords:**
 ```python
@@ -221,7 +309,26 @@ The web search feature works automatically in the Streamlit UI:
 
 ## Examples
 
-### Example 1: Current Price Query
+### Example 1: Price Comparison Query (Uses Redis Data)
+```python
+question = "Where can I buy this product?"
+answer = chatbot.ask(session_id, question)
+# Uses price comparison data from Redis
+# Output: "The best deal is on FLIPKART at INR 55,900 from
+#         iNvent - Apple Premium Reseller. This offers potential
+#         savings of INR 79,000 (58.5%)..."
+```
+
+### Example 2: Platform Comparison (Uses Redis Data)
+```python
+question = "Show me prices on Amazon vs Flipkart"
+answer = chatbot.ask(session_id, question)
+# Uses price comparison data from Redis
+# Output: Detailed price breakdown from both platforms with
+#         specific sellers and savings information
+```
+
+### Example 3: Current Price Query (Triggers Web Search)
 ```python
 question = "What is the current price?"
 answer = chatbot.ask(session_id, question)
@@ -229,7 +336,7 @@ answer = chatbot.ask(session_id, question)
 # Output includes: "According to current search results: ..."
 ```
 
-### Example 2: Product Comparison
+### Example 4: Product Comparison (Triggers Web Search)
 ```python
 question = "Compare this with Samsung Galaxy S24"
 answer = chatbot.ask(session_id, question)
@@ -237,7 +344,7 @@ answer = chatbot.ask(session_id, question)
 # Output includes competitive analysis
 ```
 
-### Example 3: Feature Query (No Search)
+### Example 5: Feature Query (Uses Product Data)
 ```python
 question = "What are the main features?"
 answer = chatbot.ask(session_id, question)
