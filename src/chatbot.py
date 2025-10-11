@@ -99,21 +99,13 @@ class ProductChatbot:
             print("⚠ Web search disabled (SERPER_API_KEY not found)")
             self.enable_web_search = False
 
-        # Create agent prompt
+        # Create agent with tools if enabled
         if self.tools:
-            # Use ReAct agent prompt
-            self.agent_prompt = PromptTemplate.from_template("""You are a helpful product analysis assistant. Answer questions about products based on the product data and conversation history provided.
+            # Simplified system prompt - LangChain handles ReAct format automatically
+            self.system_prefix = """You are a helpful product analysis assistant. Answer questions about products based on the provided product data.
 
 PRODUCT DATA:
 {product_context}
-
-CONVERSATION HISTORY:
-{history}
-
-You have access to the following tools:
-{tools}
-
-Tool Names: {tool_names}
 
 Guidelines:
 1. First check the PRODUCT DATA for the answer
@@ -122,33 +114,51 @@ Guidelines:
 4. If information is in the product data, DO NOT use web_search - answer directly
 5. Be specific and quote from reviews when relevant
 6. When recommending where to buy, mention the platform, price, and any savings
-7. Keep answers concise but informative
+7. Keep answers concise but informative"""
 
-Use the following format:
+            # Create ReAct prompt template (LangChain standard format)
+            # This follows the ReAct format that create_react_agent expects
+            full_template = f"""{self.system_prefix}
 
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{tool_names}]
+TOOLS:
+------
+You have access to the following tools:
+
+{{tools}}
+
+To use a tool, please use the following format:
+
+```
+Thought: Do I need to use a tool? Yes
+Action: the action to take, should be one of [{{tool_names}}]
 Action Input: the input to the action
 Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
+```
+
+When you have a response to say to the Human, or if you do not need to use a tool, you MUST use the format:
+
+```
+Thought: Do I need to use a tool? No
+Final Answer: [your response here]
+```
 
 Begin!
 
-Question: {input}
-Thought: {agent_scratchpad}""")
+New input: {{input}}
+Thought:{{agent_scratchpad}}"""
 
-            # Create agent
-            self.agent = create_react_agent(self.llm, self.tools, self.agent_prompt)
-            self.agent_executor = AgentExecutor(
-                agent=self.agent,
-                tools=self.tools,
-                verbose=True,
-                handle_parsing_errors=True,
-                max_iterations=3
+            self.agent_prompt = PromptTemplate(
+                input_variables=["tools", "tool_names", "input", "agent_scratchpad", "product_context"],
+                template=full_template
             )
+
+            # Create agent - it will automatically handle agent_scratchpad
+            self.agent = create_react_agent(self.llm, self.tools, self.agent_prompt)
+
+            # Note: We don't add memory here because we need session-specific memory
+            # Memory will be created per-session in the ask() method
+            self.agent_executor = None  # Will be created with session memory
+
         else:
             # No tools - simple prompt-based Q&A
             self.qa_template = """You are a helpful product analysis assistant. You answer questions about products based on the product data provided.
@@ -432,13 +442,8 @@ YOUR ANSWER:"""
         if not product_data:
             raise ValueError("Please analyze a product first before asking questions.")
 
-        # Get conversation history using LangChain's RedisChatMessageHistory
-        message_history = self._get_message_history(session_id)
-        messages = message_history.messages
-
-        # Format context and history
+        # Format product context
         product_context = self.format_product_context(product_data)
-        history = self.format_history(messages)
 
         # Store product title for web search tool context
         self._current_product_context = product_context
@@ -447,16 +452,41 @@ YOUR ANSWER:"""
         # Generate answer
         try:
             if self.tools:
-                # Use agent with tools (LLM decides when to search)
-                response = self.agent_executor.invoke({
+                # Create session-specific memory with RedisChatMessageHistory
+                message_history = self._get_message_history(session_id)
+                memory = ConversationBufferMemory(
+                    chat_memory=message_history,
+                    memory_key="chat_history",
+                    input_key="input",  # Specify which key is the main input
+                    return_messages=True
+                )
+
+                # Create AgentExecutor with memory (LangChain handles history automatically)
+                from langchain.agents import AgentExecutor
+                agent_executor = AgentExecutor(
+                    agent=self.agent,
+                    tools=self.tools,
+                    memory=memory,
+                    verbose=True,
+                    handle_parsing_errors=True,
+                    max_iterations=3
+                )
+
+                # Invoke - LangChain automatically handles:
+                # - conversation history (from memory)
+                # - agent_scratchpad (intermediate steps)
+                # - ReAct format (thought/action/observation loop)
+                response = agent_executor.invoke({
                     "product_context": product_context,
-                    "history": history,
-                    "input": question,
-                    "agent_scratchpad": ""
+                    "input": question
                 })
                 answer = response.get('output', '').strip()
             else:
-                # No tools - direct prompt
+                # No tools - direct prompt with manual history handling
+                message_history = self._get_message_history(session_id)
+                messages = message_history.messages
+                history = self.format_history(messages)
+
                 full_prompt = self.prompt.format(
                     product_context=product_context,
                     history=history,
@@ -465,9 +495,9 @@ YOUR ANSWER:"""
                 response = self.llm.invoke(full_prompt)
                 answer = response.content.strip()
 
-            # Save to Redis using LangChain's message history
-            message_history.add_user_message(question)
-            message_history.add_ai_message(answer)
+                # Save manually for non-agent mode
+                message_history.add_user_message(question)
+                message_history.add_ai_message(answer)
 
             return answer
 

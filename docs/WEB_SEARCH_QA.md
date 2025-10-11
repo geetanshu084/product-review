@@ -241,28 +241,40 @@ Price by Platform (showing lowest prices):
 The chatbot is implemented in `src/chatbot.py` using LangChain's standard components:
 
 **Architecture:**
-- **Memory**: LangChain's `RedisChatMessageHistory` (standard Redis backend)
+- **Memory**: `ConversationBufferMemory` with `RedisChatMessageHistory` backend
 - **Agent Framework**: LangChain ReAct agent (`create_react_agent`)
 - **LLM**: Google Gemini (makes decisions about tool usage)
 - **Tool**: `web_search` tool using Serper API
-- **Executor**: `AgentExecutor` with max 3 iterations
+- **Executor**: `AgentExecutor` with memory, max 3 iterations
+
+**What LangChain Handles Automatically:**
+- ✅ Conversation history loading and saving
+- ✅ `agent_scratchpad` (thought/action/observation loop)
+- ✅ ReAct format (Question/Thought/Action/Observation/Final Answer)
+- ✅ Tool descriptions and invocation
+- ✅ Memory persistence to Redis
 
 **Key Components:**
 
-1. **Redis Message History** (LangChain standard):
+1. **Redis Message History + Memory**:
 ```python
 from langchain_community.chat_message_histories import RedisChatMessageHistory
+from langchain.memory import ConversationBufferMemory
 
-def _get_message_history(self, session_id: str):
-    return RedisChatMessageHistory(
-        session_id=session_id,
-        url=self.redis_url,
-        key_prefix="chat_history:"
-    )
+# Create session-specific message history
+message_history = RedisChatMessageHistory(
+    session_id=session_id,
+    url=redis_url,
+    key_prefix="chat_history:"
+)
 
-# Save messages
-message_history.add_user_message(question)
-message_history.add_ai_message(answer)
+# Wrap with ConversationBufferMemory
+memory = ConversationBufferMemory(
+    chat_memory=message_history,
+    memory_key="chat_history",
+    input_key="input",  # Main input variable
+    return_messages=True
+)
 ```
 
 2. **Tool Definition**:
@@ -274,28 +286,34 @@ search_tool = Tool(
 )
 ```
 
-3. **Agent Creation**:
+3. **Agent + Executor Creation**:
 ```python
+# Create agent (handles ReAct format)
 self.agent = create_react_agent(self.llm, self.tools, self.agent_prompt)
-self.agent_executor = AgentExecutor(
+
+# Create executor with memory (handles history automatically)
+agent_executor = AgentExecutor(
     agent=self.agent,
     tools=self.tools,
-    verbose=True,  # Shows agent's reasoning
+    memory=memory,  # LangChain manages conversation history
+    verbose=True,
     handle_parsing_errors=True,
     max_iterations=3
 )
 ```
 
-4. **Query Execution**:
+4. **Query Execution** (Simplified):
 ```python
-if self.tools:
-    # LLM decides whether to use web search
-    response = self.agent_executor.invoke({
-        "product_context": product_context,
-        "history": history,
-        "input": question,
-        "agent_scratchpad": ""
-    })
+# LangChain automatically handles:
+# - Loading conversation history from memory
+# - Formatting agent_scratchpad
+# - ReAct thought/action/observation loop
+# - Saving new messages to memory
+
+response = agent_executor.invoke({
+    "product_context": product_context,
+    "input": question  # Just input + context, no manual history!
+})
 ```
 
 **Key Methods:**
