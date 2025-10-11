@@ -147,10 +147,12 @@ class SerperPriceComparison:
                 "url": result.get("link", ""),
                 "seller": result.get("source", "N/A"),
                 "rating": result.get("rating", 0.0),
-                "reviews": result.get("reviews", 0),
+                # API returns "ratingCount" (not "reviews")
+                "reviews": result.get("ratingCount", result.get("reviews", 0)),
                 "delivery": result.get("delivery", "N/A"),
                 "in_stock": True,  # Assume in stock if listed
-                "thumbnail": result.get("thumbnail", "")
+                # API returns "imageUrl" (not "thumbnail")
+                "thumbnail": result.get("imageUrl", result.get("thumbnail", ""))
             }
         except Exception as e:
             print(f"⚠ Error normalizing result: {str(e)}")
@@ -290,7 +292,8 @@ class SerperPriceComparison:
                 "best_deal": None
             }
 
-        shopping_results = raw_results.get("shopping_results", [])
+        # Serper API returns results in "shopping" key (not "shopping_results")
+        shopping_results = raw_results.get("shopping", raw_results.get("shopping_results", []))
 
         if not shopping_results:
             print("⚠ No shopping results found")
@@ -325,9 +328,10 @@ class SerperPriceComparison:
         best_deal = self.find_best_deal(normalized_results)
 
         # Print summary
+        currency = normalized_results[0]['currency'] if normalized_results else 'INR'
         print(f"\n📊 Price Summary:")
         print(f"  Platforms found: {len(grouped)}")
-        print(f"  Price range: {stats['currency'] if normalized_results else 'INR'} {stats['min_price']:.2f} - {stats['max_price']:.2f}")
+        print(f"  Price range: {currency} {stats['min_price']:.2f} - {stats['max_price']:.2f}")
         if best_deal:
             print(f"  Best deal: {best_deal['platform']} at {best_deal['currency']} {best_deal['price']:.2f}")
             print(f"  Potential savings: {best_deal['currency']} {best_deal['savings']:.2f} ({best_deal['savings_percent']:.1f}%)")
