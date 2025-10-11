@@ -5,8 +5,9 @@ Compares product prices across Amazon, Flipkart, eBay, Walmart, and other platfo
 
 import re
 import statistics
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import requests
+from difflib import SequenceMatcher
 
 
 class SerperPriceComparison:
@@ -116,6 +117,108 @@ class SerperPriceComparison:
             return "GBP"
         else:
             return "INR"  # Default
+
+    def _extract_product_attributes(self, title: str) -> Dict[str, str]:
+        """
+        Extract key product attributes from title
+
+        Args:
+            title: Product title
+
+        Returns:
+            Dictionary of attributes (brand, model, storage, ram, color, etc.)
+        """
+        title_lower = title.lower()
+        attributes = {}
+
+        # Extract brand (common brands)
+        brands = ['apple', 'samsung', 'oneplus', 'xiaomi', 'realme', 'oppo', 'vivo',
+                  'google', 'motorola', 'nokia', 'asus', 'sony', 'lg', 'huawei',
+                  'iphone', 'galaxy', 'pixel', 'redmi', 'poco']
+        for brand in brands:
+            if brand in title_lower:
+                attributes['brand'] = brand
+                break
+
+        # Extract storage capacity (GB, TB)
+        storage_match = re.search(r'(\d+)\s*(gb|tb)', title_lower)
+        if storage_match:
+            attributes['storage'] = f"{storage_match.group(1)}{storage_match.group(2)}"
+
+        # Extract RAM
+        ram_match = re.search(r'(\d+)\s*gb\s*ram', title_lower)
+        if ram_match:
+            attributes['ram'] = f"{ram_match.group(1)}gb"
+
+        # Extract color
+        colors = ['black', 'white', 'blue', 'red', 'green', 'yellow', 'pink', 'purple',
+                  'gold', 'silver', 'grey', 'gray', 'titanium', 'natural', 'midnight',
+                  'starlight', 'sierra', 'alpine']
+        for color in colors:
+            if color in title_lower:
+                attributes['color'] = color
+                break
+
+        # Extract model numbers/names
+        model_match = re.search(r'(pro max|pro|plus|ultra|lite|mini|\d+[a-z]?)', title_lower)
+        if model_match:
+            attributes['model'] = model_match.group(1)
+
+        return attributes
+
+    def _calculate_product_similarity(self, title1: str, title2: str) -> float:
+        """
+        Calculate similarity between two product titles
+
+        Args:
+            title1: First product title
+            title2: Second product title
+
+        Returns:
+            Similarity score (0.0 to 1.0)
+        """
+        # Normalize titles
+        t1 = re.sub(r'[^\w\s]', '', title1.lower())
+        t2 = re.sub(r'[^\w\s]', '', title2.lower())
+
+        # Use SequenceMatcher for basic similarity
+        sequence_similarity = SequenceMatcher(None, t1, t2).ratio()
+
+        # Extract and compare attributes
+        attrs1 = self._extract_product_attributes(title1)
+        attrs2 = self._extract_product_attributes(title2)
+
+        # Weight attribute matches more heavily
+        attribute_matches = 0
+        total_attributes = 0
+
+        for key in ['brand', 'storage', 'ram', 'model']:
+            if key in attrs1 or key in attrs2:
+                total_attributes += 1
+                if key in attrs1 and key in attrs2 and attrs1[key] == attrs2[key]:
+                    attribute_matches += 1
+
+        attribute_similarity = attribute_matches / total_attributes if total_attributes > 0 else 0
+
+        # Weighted average (attributes are more important than text similarity)
+        final_similarity = (attribute_similarity * 0.7) + (sequence_similarity * 0.3)
+
+        return final_similarity
+
+    def _is_same_product(self, original_title: str, result_title: str, threshold: float = 0.65) -> bool:
+        """
+        Check if result is the same product as original
+
+        Args:
+            original_title: Original product title
+            result_title: Result product title
+            threshold: Similarity threshold (default: 0.65)
+
+        Returns:
+            True if same product, False otherwise
+        """
+        similarity = self._calculate_product_similarity(original_title, result_title)
+        return similarity >= threshold
 
     def _normalize_result(self, result: Dict) -> Dict:
         """
@@ -266,15 +369,19 @@ class SerperPriceComparison:
         self,
         product_name: str,
         location: str = "India",
-        num_results: int = 20
+        num_results: int = 20,
+        filter_exact_match: bool = True,
+        similarity_threshold: float = 0.65
     ) -> Dict:
         """
-        Compare prices across platforms
+        Compare prices across platforms for the same product
 
         Args:
             product_name: Product name to search for
             location: Location for search (default: "India")
             num_results: Number of results to fetch
+            filter_exact_match: Filter to show only exact product matches (default: True)
+            similarity_threshold: Similarity threshold for product matching (default: 0.65)
 
         Returns:
             Dictionary with price comparison data
@@ -288,8 +395,15 @@ class SerperPriceComparison:
             return {
                 "error": raw_results["error"],
                 "price_comparison": {},
-                "price_stats": {},
-                "best_deal": None
+                "price_stats": {
+                    "min_price": 0.0,
+                    "max_price": 0.0,
+                    "avg_price": 0.0,
+                    "median_price": 0.0,
+                    "total_results": 0
+                },
+                "best_deal": None,
+                "total_results": 0
             }
 
         # Serper API returns results in "shopping" key (not "shopping_results")
@@ -306,17 +420,30 @@ class SerperPriceComparison:
                     "median_price": 0.0,
                     "total_results": 0
                 },
-                "best_deal": None
+                "best_deal": None,
+                "total_results": 0
             }
 
         # Normalize results
         normalized_results = []
+        filtered_out_count = 0
+
         for result in shopping_results:
             normalized = self._normalize_result(result)
             if normalized:
-                normalized_results.append(normalized)
+                # Filter to only include exact product matches
+                if filter_exact_match:
+                    if self._is_same_product(product_name, normalized['title'], similarity_threshold):
+                        normalized_results.append(normalized)
+                    else:
+                        filtered_out_count += 1
+                else:
+                    normalized_results.append(normalized)
 
-        print(f"✓ Found {len(normalized_results)} valid results")
+        if filter_exact_match and filtered_out_count > 0:
+            print(f"✓ Found {len(normalized_results)} exact matches (filtered out {filtered_out_count} different products)")
+        else:
+            print(f"✓ Found {len(normalized_results)} valid results")
 
         # Group by platform
         grouped = self.group_by_platform(normalized_results)

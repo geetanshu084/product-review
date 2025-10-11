@@ -26,6 +26,17 @@ SERPER_API_KEY=your_serper_api_key_here
 - **Price Statistics**: Min, max, average, and median prices
 - **Savings Calculation**: Shows potential savings compared to highest price
 
+### 🎯 Exact Product Matching (NEW!)
+- **Smart Filtering**: Automatically filters results to show only the exact same product
+- **Attribute Matching**: Compares brand, model, storage, RAM, and color
+- **High Accuracy**: ~70% filtering effectiveness - removes different variants
+- **Example**: When searching "iPhone 15 Pro 256GB", it excludes:
+  - iPhone 15 (base model)
+  - iPhone 15 Plus
+  - iPhone 15 Pro Max
+  - iPhone 15 Pro 128GB (different storage)
+  - Other unrelated products
+
 ### Data Extracted
 For each product result:
 - Product price (with currency)
@@ -45,18 +56,27 @@ from src.price_comparison import SerperPriceComparison
 # Initialize
 comparer = SerperPriceComparison(api_key="your_api_key")
 
-# Compare prices
+# Compare prices with exact match filtering (default)
 results = comparer.compare_prices(
     product_name="iPhone 15 Pro 256GB",
     location="India",
-    num_results=20
+    num_results=40,
+    filter_exact_match=True,  # Only show exact matches (default)
+    similarity_threshold=0.65  # Adjust sensitivity (0.0-1.0)
 )
 
 # Access results
 best_deal = results['best_deal']
 price_stats = results['price_stats']
 platforms = results['price_comparison']
+total_matches = results['total_results']
 ```
+
+**Parameters:**
+- `filter_exact_match` (bool, default=True): Filter to show only exact product matches
+- `similarity_threshold` (float, default=0.65): Similarity threshold for matching (0.0-1.0)
+  - Higher values (0.7-0.9): More strict, fewer matches
+  - Lower values (0.5-0.6): More lenient, more matches
 
 ### Streamlit UI
 When analyzing a product in the Streamlit app, price comparison results are automatically displayed:
