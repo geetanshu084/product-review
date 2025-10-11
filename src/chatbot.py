@@ -1,12 +1,14 @@
 """
 Conversational Q&A System Module
 Maintains conversation context using Redis for persistent memory
+Includes web search capability for up-to-date information
 """
 
 import json
 import os
 from typing import Dict, List, Optional
 import redis
+import requests
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
@@ -113,7 +115,9 @@ class ProductChatbot:
         redis_db: int = 0,
         redis_password: Optional[str] = None,
         model_name: str = "gemini-2.0-flash-exp",
-        google_api_key: Optional[str] = None
+        google_api_key: Optional[str] = None,
+        serper_api_key: Optional[str] = None,
+        enable_web_search: bool = True
     ):
         """
         Initialize the chatbot
@@ -126,6 +130,8 @@ class ProductChatbot:
             redis_password: Redis password (optional)
             model_name: Name of the Gemini model to use
             google_api_key: Google API key for Gemini (recommended)
+            serper_api_key: Serper API key for web search (optional)
+            enable_web_search: Enable web search capability (default: True)
         """
         # Check for API key first (recommended approach)
         api_key = google_api_key or os.getenv('GOOGLE_API_KEY')
@@ -153,30 +159,55 @@ class ProductChatbot:
             redis_password=redis_password
         )
 
-        # Create prompt template for Q&A
-        self.qa_template = """You are a helpful product analysis assistant. You answer questions about products based on the product data provided.
+        # Initialize web search if enabled
+        self.enable_web_search = enable_web_search
+        self.serper_api_key = serper_api_key or os.getenv('SERPER_API_KEY')
+
+        if enable_web_search and self.serper_api_key:
+            print("✓ Web search enabled for Q&A")
+        elif enable_web_search and not self.serper_api_key:
+            print("⚠ Web search disabled (SERPER_API_KEY not found)")
+            self.enable_web_search = False
+
+        # Create prompt template for Q&A (with web search capability)
+        web_search_note = ""
+        if self.enable_web_search:
+            web_search_note = """
+WEB SEARCH RESULTS (if available):
+{web_search_results}
+"""
+
+        self.qa_template = f"""You are a helpful product analysis assistant. You answer questions about products based on the product data provided.
 
 PRODUCT DATA:
-{product_context}
-
+{{product_context}}
+{web_search_note}
 CONVERSATION HISTORY:
-{history}
+{{history}}
 
-USER QUESTION: {input}
+USER QUESTION: {{input}}
 
 Guidelines:
-1. Answer based ONLY on the product data provided above
-2. If the information is not available in the product data, clearly state "I don't have that information in the product data"
-3. Be specific and quote from reviews when relevant
-4. Keep answers concise but informative
-5. Maintain a helpful and professional tone
+1. First check the PRODUCT DATA for the answer
+2. If web search results are provided, use them for current/updated information (prices, availability, comparisons)
+3. If the information is not available in either source, clearly state what information is missing
+4. Be specific and quote from reviews when relevant
+5. Keep answers concise but informative
+6. Maintain a helpful and professional tone
+7. When using web search data, mention "According to current search results..."
 
 YOUR ANSWER:"""
 
-        self.prompt = PromptTemplate(
-            input_variables=["product_context", "history", "input"],
-            template=self.qa_template
-        )
+        if self.enable_web_search:
+            self.prompt = PromptTemplate(
+                input_variables=["product_context", "history", "input", "web_search_results"],
+                template=self.qa_template
+            )
+        else:
+            self.prompt = PromptTemplate(
+                input_variables=["product_context", "history", "input"],
+                template=self.qa_template
+            )
 
     def format_product_context(self, product_data: Dict) -> str:
         """
@@ -288,9 +319,88 @@ YOUR ANSWER:"""
 
         return "\n".join(history)
 
+    def _should_search_web(self, question: str) -> bool:
+        """
+        Determine if the question requires web search
+
+        Args:
+            question: User's question
+
+        Returns:
+            True if web search is needed, False otherwise
+        """
+        # Keywords that indicate need for current information
+        search_keywords = [
+            'current', 'latest', 'now', 'today', 'recent', 'updated',
+            'compare', 'vs', 'versus', 'alternative', 'similar',
+            'price', 'cost', 'buy', 'where to', 'available',
+            'in stock', 'sale', 'discount', 'offer', 'deal'
+        ]
+
+        question_lower = question.lower()
+        return any(keyword in question_lower for keyword in search_keywords)
+
+    def _web_search(self, query: str, num_results: int = 5) -> str:
+        """
+        Perform web search using Serper API
+
+        Args:
+            query: Search query
+            num_results: Number of results to fetch
+
+        Returns:
+            Formatted search results string
+        """
+        if not self.serper_api_key:
+            return "Web search unavailable (API key not configured)"
+
+        try:
+            payload = {
+                "q": query,
+                "num": num_results
+            }
+
+            headers = {
+                "X-API-KEY": self.serper_api_key,
+                "Content-Type": "application/json"
+            }
+
+            response = requests.post(
+                "https://google.serper.dev/search",
+                json=payload,
+                headers=headers,
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                return f"Web search error: HTTP {response.status_code}"
+
+            data = response.json()
+            organic_results = data.get("organic", [])
+
+            if not organic_results:
+                return "No search results found"
+
+            # Format results
+            formatted_results = []
+            formatted_results.append(f"Search query: {query}")
+            formatted_results.append(f"Found {len(organic_results)} results:")
+            formatted_results.append("")
+
+            for i, result in enumerate(organic_results[:5], 1):
+                formatted_results.append(f"{i}. {result.get('title', 'N/A')}")
+                formatted_results.append(f"   {result.get('snippet', 'N/A')}")
+                formatted_results.append(f"   Source: {result.get('link', 'N/A')}")
+                formatted_results.append("")
+
+            return "\n".join(formatted_results)
+
+        except Exception as e:
+            return f"Web search failed: {str(e)}"
+
     def ask(self, session_id: str, question: str) -> str:
         """
-        Ask a question about the product
+        Ask a question about the product (with web search if needed)
 
         Args:
             session_id: Unique session identifier
@@ -314,13 +424,30 @@ YOUR ANSWER:"""
         product_context = self.format_product_context(product_data)
         history = self.format_history(messages)
 
+        # Check if web search is needed
+        web_search_results = ""
+        if self.enable_web_search and self._should_search_web(question):
+            print(f"  🔍 Web search triggered for: {question[:50]}...")
+            # Build search query based on product and question
+            product_title = product_data.get('title', '')
+            search_query = f"{product_title} {question}"
+            web_search_results = self._web_search(search_query, num_results=5)
+
         # Generate answer
         try:
-            full_prompt = self.prompt.format(
-                product_context=product_context,
-                history=history,
-                input=question
-            )
+            if self.enable_web_search:
+                full_prompt = self.prompt.format(
+                    product_context=product_context,
+                    history=history,
+                    input=question,
+                    web_search_results=web_search_results if web_search_results else "No web search performed"
+                )
+            else:
+                full_prompt = self.prompt.format(
+                    product_context=product_context,
+                    history=history,
+                    input=question
+                )
 
             response = self.llm.invoke(full_prompt)
             answer = response.content.strip()

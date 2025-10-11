@@ -6,7 +6,8 @@ An intelligent Python-based agent that analyzes Amazon products by scraping prod
 
 - **Amazon Product Scraper**: Extracts product details, pricing, ratings, reviews, and seller information
 - **AI-Powered Analysis**: Uses Google Gemini to provide structured product analysis with pros/cons
-- **Conversational Q&A**: Ask follow-up questions about analyzed products with context-aware responses
+- **Multi-Platform Price Comparison**: Compare prices across Amazon, Flipkart, eBay, Walmart, and more (using Serper API)
+- **Conversational Q&A with Web Search**: Ask questions about products with automatic web search for current information
 - **Persistent Memory**: Redis-backed conversation history for seamless multi-session interactions
 - **Interactive Web UI**: Clean Streamlit interface for easy product analysis and chat
 
@@ -24,7 +25,11 @@ amazon-review/
 ├── src/
 │   ├── scraper.py                     # Amazon product scraper
 │   ├── analyzer.py                    # LLM analysis engine
-│   └── chatbot.py                     # Q&A system with Redis memory
+│   ├── chatbot.py                     # Q&A system with Redis memory & web search
+│   └── price_comparison.py            # Multi-platform price comparison
+├── docs/
+│   ├── PRICE_COMPARISON.md            # Price comparison feature docs
+│   └── WEB_SEARCH_QA.md               # Web search feature docs
 └── utils/                             # Utility functions (optional)
 ```
 
@@ -33,6 +38,7 @@ amazon-review/
 - Python 3.8 or higher
 - Redis server (for Q&A conversation memory)
 - Google API Key for Gemini (free from makersuite.google.com)
+- Serper API Key (optional, for price comparison and web search - free tier: 2,500 searches/month from serper.dev)
 
 ## Installation
 
@@ -92,22 +98,31 @@ redis-cli ping
 # Should return: PONG
 ```
 
-### 5. Configure Google API Key
+### 5. Configure API Keys
 
-1. Get your API key:
+1. Get your Google API key:
    - Go to https://makersuite.google.com/app/apikey
    - Sign in with your Google account
    - Click "Create API key"
    - Copy the generated API key
 
-2. Copy and configure `.env`:
+2. Get your Serper API key (optional, for price comparison and web search):
+   - Go to https://serper.dev/
+   - Sign up for a free account
+   - Get your API key from the dashboard
+   - Free tier includes 2,500 free searches/month
+
+3. Copy and configure `.env`:
    ```bash
    cp .env.example .env
    ```
 
-3. Add your API key to `.env`:
+4. Add your API keys to `.env`:
    ```bash
-   GOOGLE_API_KEY=your_api_key_here
+   GOOGLE_API_KEY=your_google_api_key_here
+
+   # Serper API Key (optional - for price comparison and web search)
+   SERPER_API_KEY=your_serper_api_key_here
 
    # Redis configuration (default values)
    REDIS_HOST=localhost
@@ -151,9 +166,11 @@ The application will open in your default browser at `http://localhost:8501`
 **Example questions:**
 - "What are the main complaints about this product?"
 - "Is this good for professional use?"
-- "How does the price compare to similar products?"
+- "What is the current price?" (triggers web search)
+- "Compare this with Samsung Galaxy S24" (triggers web search)
 - "What do customers say about durability?"
 - "Does it come with a warranty?"
+- "Is this available in stock?" (triggers web search)
 
 ## Features in Detail
 
@@ -179,14 +196,28 @@ The application will open in your default browser at `http://localhost:8501`
 - Provides actionable recommendations
 - Formats output in clean markdown
 
+### Multi-Platform Price Comparison (`src/price_comparison.py`)
+
+- Compares prices across Amazon, Flipkart, eBay, Walmart, and more
+- Exact product matching with attribute filtering (brand, model, storage, RAM, color)
+- Finds best deals with savings calculation
+- Price statistics (min, max, average, median)
+- Platform-wise breakdown with direct purchase links
+- Powered by Serper Shopping API
+- See [docs/PRICE_COMPARISON.md](docs/PRICE_COMPARISON.md) for details
+
 ### Conversational Q&A System (`src/chatbot.py`)
 
 - Redis-backed persistent memory
 - Maintains conversation context
 - Session-based conversation history
 - Answers based on scraped product data
+- **Intelligent web search**: Automatically searches internet for current information
+- Keyword-based search triggering (price, compare, latest, etc.)
+- Seamless integration of web search results into answers
 - Clear indication when information is unavailable
 - Memory survives application restarts
+- See [docs/WEB_SEARCH_QA.md](docs/WEB_SEARCH_QA.md) for details
 
 ### Streamlit Web Interface (`app.py`)
 
@@ -273,6 +304,7 @@ pip install -r requirements.txt
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
 | `GOOGLE_API_KEY` | Google API key for Gemini | Yes | - |
+| `SERPER_API_KEY` | Serper API key for price comparison & web search | No | None |
 | `REDIS_HOST` | Redis server hostname | No | localhost |
 | `REDIS_PORT` | Redis server port | No | 6379 |
 | `REDIS_DB` | Redis database number | No | 0 |
@@ -288,7 +320,8 @@ pip install -r requirements.txt
 
 ## Future Enhancements
 
-- [ ] Add price comparison with other e-commerce sites
+- [x] Add price comparison with other e-commerce sites (Completed - Phase 2)
+- [x] Add web search capability to Q&A chatbot (Completed - Phase 2)
 - [x] Scrape more reviews with pagination support (up to 200 reviews)
 - [ ] Add sentiment analysis visualization charts
 - [ ] Export analysis as PDF
@@ -322,4 +355,4 @@ This tool is intended for personal use only. Scraping Amazon at scale or for com
 
 **Author:** AI Product Analysis Team
 
-**Version:** 1.0.0
+**Version:** 2.0.0 (Phase 2: Price Comparison + Web Search)
