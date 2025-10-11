@@ -91,6 +91,7 @@ def show_sidebar():
 
         ### Features:
         - Comprehensive product analysis
+        - **Multi-platform price comparison**
         - Bank offers extraction
         - Product specifications
         - Pros and cons from customer reviews
@@ -102,6 +103,7 @@ def show_sidebar():
         ### Requirements:
         - Valid Amazon product URL
         - GOOGLE_API_KEY in .env
+        - SERPER_API_KEY in .env (optional, for price comparison)
         - Redis server running
         """)
 
@@ -221,6 +223,55 @@ def product_analysis_tab():
                 st.metric("Reviews", st.session_state.product_data.get('total_reviews', 'N/A'))
 
         st.markdown("---")
+
+        # Price comparison results (if available)
+        price_comparison = st.session_state.product_data.get('price_comparison')
+        if price_comparison and price_comparison.get('total_results', 0) > 0:
+            st.subheader("💰 Price Comparison Across Platforms")
+
+            # Best deal highlight
+            best_deal = price_comparison.get('best_deal')
+            if best_deal:
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Best Price", f"{best_deal['currency']} {best_deal['price']:.2f}")
+                with col2:
+                    st.metric("Platform", best_deal['platform'].upper())
+                with col3:
+                    st.metric("Potential Savings", f"{best_deal['currency']} {best_deal['savings']:.2f}")
+                with col4:
+                    st.metric("Savings %", f"{best_deal['savings_percent']:.1f}%")
+
+            # Price statistics
+            stats = price_comparison.get('price_stats', {})
+            if stats:
+                st.markdown("**Price Range:**")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Minimum", f"₹{stats['min_price']:.2f}")
+                with col2:
+                    st.metric("Average", f"₹{stats['avg_price']:.2f}")
+                with col3:
+                    st.metric("Maximum", f"₹{stats['max_price']:.2f}")
+
+            # Platform breakdown
+            platforms = price_comparison.get('price_comparison', {})
+            if platforms:
+                st.markdown("**Prices by Platform:**")
+                for platform, items in platforms.items():
+                    if items:
+                        with st.expander(f"{platform.upper()} ({len(items)} results)"):
+                            for item in items[:5]:  # Show top 5
+                                col1, col2 = st.columns([3, 1])
+                                with col1:
+                                    st.markdown(f"**{item['title'][:80]}...**")
+                                    st.caption(f"Seller: {item['seller']} | Rating: {item['rating']}")
+                                with col2:
+                                    st.markdown(f"**{item['currency']} {item['price']:.2f}**")
+                                    if item['url']:
+                                        st.markdown(f"[View →]({item['url']})")
+
+            st.markdown("---")
 
         # Display analysis
         st.markdown(st.session_state.analysis_result)

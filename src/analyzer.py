@@ -9,12 +9,20 @@ from typing import Dict, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
+from src.price_comparison import SerperPriceComparison
 
 
 class ProductAnalyzer:
     """Analyzes product data using Google Gemini LLM"""
 
-    def __init__(self, credentials_path: Optional[str] = None, model_name: str = "gemini-2.0-flash-exp", google_api_key: Optional[str] = None):
+    def __init__(
+        self,
+        credentials_path: Optional[str] = None,
+        model_name: str = "gemini-2.0-flash-exp",
+        google_api_key: Optional[str] = None,
+        serper_api_key: Optional[str] = None,
+        enable_price_comparison: bool = True
+    ):
         """
         Initialize the product analyzer
 
@@ -22,6 +30,8 @@ class ProductAnalyzer:
             credentials_path: Path to GCP service account JSON file (deprecated - use google_api_key instead)
             model_name: Name of the Gemini model to use
             google_api_key: Google API key for Gemini (recommended)
+            serper_api_key: Serper API key for price comparison (optional)
+            enable_price_comparison: Whether to enable price comparison feature
         """
         # Check for API key first (recommended approach)
         api_key = google_api_key or os.getenv('GOOGLE_API_KEY')
@@ -33,6 +43,22 @@ class ProductAnalyzer:
                 "2. Pass google_api_key parameter\n\n"
                 "Get your API key from: https://makersuite.google.com/app/apikey"
             )
+
+        # Initialize price comparison if enabled
+        self.enable_price_comparison = enable_price_comparison
+        self.price_comparer = None
+
+        if enable_price_comparison:
+            serper_key = serper_api_key or os.getenv('SERPER_API_KEY')
+            if serper_key:
+                try:
+                    self.price_comparer = SerperPriceComparison(serper_key)
+                    print("✓ Price comparison enabled")
+                except Exception as e:
+                    print(f"⚠ Price comparison disabled: {str(e)}")
+                    self.price_comparer = None
+            else:
+                print("⚠ SERPER_API_KEY not found - price comparison disabled")
 
         self.llm = ChatGoogleGenerativeAI(
             model=model_name,
@@ -60,7 +86,26 @@ class ProductAnalyzer:
         # Create LLM chain
         self.chain = LLMChain(llm=self.llm, prompt=self.prompt)
 
-    def format_product_data(self, product_data: Dict) -> str:
+    def get_price_comparison(self, product_title: str) -> Optional[Dict]:
+        """
+        Get price comparison data for the product
+
+        Args:
+            product_title: Product title to search for
+
+        Returns:
+            Price comparison dictionary or None
+        """
+        if not self.price_comparer:
+            return None
+
+        try:
+            return self.price_comparer.compare_prices(product_title)
+        except Exception as e:
+            print(f"⚠ Price comparison failed: {str(e)}")
+            return None
+
+    def format_product_data(self, product_data: Dict, price_comparison: Optional[Dict] = None) -> str:
         """
         Format product data into a readable string for the LLM
 
@@ -172,14 +217,53 @@ class ProductAnalyzer:
             formatted.append("No reviews available for analysis")
             formatted.append("")
 
+        # Price comparison data
+        if price_comparison and price_comparison.get('total_results', 0) > 0:
+            formatted.append("=== PRICE COMPARISON ===")
+            formatted.append(f"Total Results Found: {price_comparison['total_results']}")
+            formatted.append("")
+
+            # Price statistics
+            stats = price_comparison.get('price_stats', {})
+            if stats:
+                formatted.append("Price Statistics:")
+                formatted.append(f"  Minimum Price: {stats.get('min_price', 0):.2f}")
+                formatted.append(f"  Maximum Price: {stats.get('max_price', 0):.2f}")
+                formatted.append(f"  Average Price: {stats.get('avg_price', 0):.2f}")
+                formatted.append(f"  Median Price: {stats.get('median_price', 0):.2f}")
+                formatted.append("")
+
+            # Best deal
+            best_deal = price_comparison.get('best_deal')
+            if best_deal:
+                formatted.append("Best Deal Found:")
+                formatted.append(f"  Platform: {best_deal['platform'].upper()}")
+                formatted.append(f"  Seller: {best_deal['seller']}")
+                formatted.append(f"  Price: {best_deal['currency']} {best_deal['price']:.2f}")
+                formatted.append(f"  Rating: {best_deal.get('rating', 'N/A')}")
+                formatted.append(f"  Potential Savings: {best_deal['currency']} {best_deal['savings']:.2f} ({best_deal['savings_percent']:.1f}%)")
+                formatted.append("")
+
+            # Platform breakdown
+            platforms = price_comparison.get('price_comparison', {})
+            if platforms:
+                formatted.append("Price by Platform:")
+                for platform, items in platforms.items():
+                    if items:
+                        prices = [item['price'] for item in items if item['price'] > 0]
+                        if prices:
+                            formatted.append(f"  {platform.upper()}: {len(items)} results, min {items[0]['currency']} {min(prices):.2f}")
+                formatted.append("")
+
         return "\n".join(formatted)
 
-    def analyze_product(self, product_data: Dict) -> str:
+    def analyze_product(self, product_data: Dict, include_price_comparison: bool = True) -> str:
         """
         Analyze product data using Gemini LLM
 
         Args:
             product_data: Dictionary containing scraped product data
+            include_price_comparison: Whether to include price comparison in analysis
 
         Returns:
             Markdown-formatted analysis string
@@ -188,8 +272,18 @@ class ProductAnalyzer:
             Exception: If LLM analysis fails
         """
         try:
+            # Get price comparison if enabled
+            price_comparison = None
+            if include_price_comparison and self.price_comparer:
+                product_title = product_data.get('title', '')
+                if product_title:
+                    print("\n🔍 Fetching price comparison data...")
+                    price_comparison = self.get_price_comparison(product_title)
+                    # Store in product_data for later use
+                    product_data['price_comparison'] = price_comparison
+
             # Format product data
-            formatted_data = self.format_product_data(product_data)
+            formatted_data = self.format_product_data(product_data, price_comparison)
 
             # Run analysis
             result = self.chain.run(product_data=formatted_data)
