@@ -7,7 +7,7 @@ An intelligent Python-based agent that analyzes Amazon products by scraping prod
 - **Amazon Product Scraper**: Extracts product details, pricing, ratings, reviews, and seller information
 - **AI-Powered Analysis**: Uses Google Gemini to provide structured product analysis with pros/cons
 - **Multi-Platform Price Comparison**: Compare prices across Amazon, Flipkart, eBay, Walmart, and more (using Serper API)
-- **Conversational Q&A with Web Search**: Ask questions about products with automatic web search for current information
+- **Conversational Q&A with LLM-Driven Web Search**: Ask questions about products; LLM intelligently decides when to search the internet for current information (LangChain tool integration)
 - **Persistent Memory**: Redis-backed conversation history for seamless multi-session interactions
 - **Interactive Web UI**: Clean Streamlit interface for easy product analysis and chat
 
@@ -178,10 +178,11 @@ The application will open in your default browser at `http://localhost:8501`
 - "Which platform has the cheapest price?"
 - "How much can I save if I buy from the cheapest platform?"
 
-*Current Information (triggers web search):*
-- "What is the current price?"
+*Comparison & Current Info (LLM decides to use web search):*
 - "Compare this with Samsung Galaxy S24"
-- "Is this available in stock?"
+- "What are the latest deals?"
+- "Is this phone better than iPhone 14 Pro?"
+- "Show me similar alternatives"
 
 ## Features in Detail
 
@@ -219,20 +220,21 @@ The application will open in your default browser at `http://localhost:8501`
 
 ### Conversational Q&A System (`src/chatbot.py`)
 
+- **LangChain ReAct Agent**: LLM intelligently decides when to use web search tool
 - Redis-backed persistent memory with full product data (including price comparison)
 - Maintains conversation context
 - Session-based conversation history
 - Answers based on:
   - Scraped product data and reviews
   - **Multi-platform price comparison** (saved to Redis during analysis)
-  - **Intelligent web search** for current information
+  - **LLM-driven web search** (LangChain tool - used only when needed)
 - Can answer questions like:
   - "Where can I buy this product?" (uses price comparison data)
   - "What's the best price available?" (uses price comparison data)
   - "Show me prices on Amazon vs Flipkart" (uses price comparison data)
-  - "What is the current price?" (triggers web search)
-  - "Compare with Samsung Galaxy S24" (triggers web search)
-- Keyword-based search triggering (price, compare, latest, etc.)
+  - "Compare with Samsung Galaxy S24" (LLM decides to use web_search tool)
+  - "What are the latest deals?" (LLM decides to use web_search tool)
+- **Smart Decision Making**: LLM understands context and only searches when information isn't in product data
 - Seamless integration of price comparison and web search results
 - Clear indication when information is unavailable
 - Memory survives application restarts

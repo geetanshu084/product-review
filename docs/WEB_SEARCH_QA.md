@@ -2,7 +2,7 @@
 
 ## Overview
 The Q&A chatbot includes two powerful features for answering product questions:
-1. **Intelligent Web Search**: Automatically searches the internet when users ask questions requiring current information
+1. **LLM-Driven Web Search**: Uses LangChain tools where the LLM intelligently decides when to search the internet for current information
 2. **Multi-Platform Price Comparison**: Provides price data from Amazon, Flipkart, eBay, Walmart, and other platforms stored in Redis
 
 ## How It Works
@@ -31,34 +31,49 @@ Bot: "According to the price comparison data, the best deal is on FLIPKART
       potential savings of INR 79,000 (58.5%) compared to other platforms."
 ```
 
-### Automatic Search Triggering
-The chatbot automatically detects when a question requires web search based on keywords:
+### LLM-Driven Web Search (LangChain Tool Integration)
 
-**Triggers Web Search:**
-- Current information: `current`, `latest`, `now`, `today`, `recent`, `updated`
-- Comparisons: `compare`, `vs`, `versus`, `alternative`, `similar`
-- Pricing: `price`, `cost`, `buy`, `where to`, `available`
-- Availability: `in stock`, `sale`, `discount`, `offer`, `deal`
+The chatbot uses **LangChain's ReAct agent** with a web search tool. The LLM (Google Gemini) intelligently decides when to use the tool based on:
 
-**Uses Product Data:**
-- Questions about features, specifications, warranty
-- Questions about what's already in the product data
-- General product information queries
+**The LLM uses web search when:**
+- Information is not available in the product data
+- Question requires current/real-time information
+- User asks for comparisons with other products
+- User asks about market conditions, availability, or deals
+
+**The LLM answers directly when:**
+- Information is already in the product data
+- Question is about features, specs, reviews, or warranty
+- Price comparison data in Redis has the answer
+
+**Key Advantage:** The LLM makes context-aware decisions instead of relying on keyword matching. It understands the question's intent and only searches when necessary.
 
 ### Example Questions
 
-**Questions that trigger web search:**
-- "What is the current price of this phone?"
-- "Compare this with Samsung Galaxy S24"
-- "Is this available in stock right now?"
-- "What are the latest deals on this product?"
-- "Show me similar alternatives"
+**Questions where LLM decides to use web search:**
+- "Compare this with Samsung Galaxy S24" → LLM uses web_search tool
+- "What are the latest deals on this product?" → LLM uses web_search tool
+- "Is this phone better than iPhone 14 Pro?" → LLM uses web_search tool
+- "Show me similar alternatives" → LLM uses web_search tool
 
-**Questions that use product data:**
-- "What are the key features of this phone?"
-- "What color is this phone?"
-- "What storage capacity does it have?"
-- "Tell me about the camera"
+**Questions where LLM answers directly:**
+- "What are the key features of this phone?" → Direct answer from product data
+- "What do customers say about the camera?" → Direct answer from reviews
+- "What color is this phone?" → Direct answer from product data
+- "What is the price?" → Direct answer (from product data, not web search)
+- "Tell me about the reviews" → Direct answer from reviews
+
+**How the LLM Decides:**
+The LLM follows a thought process (visible in verbose mode):
+```
+Question: Compare this with Samsung Galaxy S24
+Thought: I need comparison info that's not in product data
+Action: web_search
+Action Input: "Apple iPhone 15 Pro vs Samsung Galaxy S24"
+Observation: [search results]
+Thought: I now have the comparison information
+Final Answer: [provides comparison]
+```
 
 ## Setup
 
@@ -223,25 +238,55 @@ Price by Platform (showing lowest prices):
 ```
 
 ### Implementation
-The web search and price comparison features are implemented in `src/chatbot.py`:
+The LangChain tool-based web search is implemented in `src/chatbot.py`:
+
+**Architecture:**
+- **Agent Framework**: LangChain ReAct agent (`create_react_agent`)
+- **LLM**: Google Gemini (makes decisions about tool usage)
+- **Tool**: `web_search` tool using Serper API
+- **Executor**: `AgentExecutor` with max 3 iterations
+
+**Key Components:**
+
+1. **Tool Definition** (lines ~178-183):
+```python
+search_tool = Tool(
+    name="web_search",
+    description="Useful for searching the internet for current information...",
+    func=self._web_search_tool
+)
+```
+
+2. **Agent Creation** (lines ~230-237):
+```python
+self.agent = create_react_agent(self.llm, self.tools, self.agent_prompt)
+self.agent_executor = AgentExecutor(
+    agent=self.agent,
+    tools=self.tools,
+    verbose=True,  # Shows agent's reasoning
+    handle_parsing_errors=True,
+    max_iterations=3
+)
+```
+
+3. **Query Execution** (lines ~517-525):
+```python
+if self.tools:
+    # LLM decides whether to use web search
+    response = self.agent_executor.invoke({
+        "product_context": product_context,
+        "history": history,
+        "input": question,
+        "agent_scratchpad": ""
+    })
+```
 
 **Key Methods:**
 - `format_product_context(product_data)` - Formats all product data including price comparison
-- `_should_search_web(question)` - Detects if question needs web search
-- `_web_search(query, num_results)` - Performs web search via Serper API
-- `ask(session_id, question)` - Main method that integrates all features
-- `set_product_data(session_id, product_data)` - Saves product data (with price comparison) to Redis
-- `get_product_data(session_id)` - Retrieves product data (with price comparison) from Redis
-
-**Search Keywords:**
-```python
-search_keywords = [
-    'current', 'latest', 'now', 'today', 'recent', 'updated',
-    'compare', 'vs', 'versus', 'alternative', 'similar',
-    'price', 'cost', 'buy', 'where to', 'available',
-    'in stock', 'sale', 'discount', 'offer', 'deal'
-]
-```
+- `_web_search_tool(query)` - Web search tool function (called by agent)
+- `ask(session_id, question)` - Main method using agent executor
+- `set_product_data(session_id, product_data)` - Saves data to Redis
+- `get_product_data(session_id)` - Retrieves data from Redis
 
 ### API Configuration
 - **Endpoint**: `https://google.serper.dev/search`

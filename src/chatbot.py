@@ -1,7 +1,7 @@
 """
 Conversational Q&A System Module
 Maintains conversation context using Redis for persistent memory
-Includes web search capability for up-to-date information
+Includes web search capability for up-to-date information via LangChain tools
 """
 
 import json
@@ -11,8 +11,11 @@ import redis
 import requests
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.memory import ConversationBufferMemory
-from langchain.prompts import PromptTemplate
+from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import ConversationChain
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain.tools import Tool
+from langchain import hub
 
 
 class RedisChatMemory:
@@ -163,53 +166,98 @@ class ProductChatbot:
         self.enable_web_search = enable_web_search
         self.serper_api_key = serper_api_key or os.getenv('SERPER_API_KEY')
 
+        # Store for product context (used by tools)
+        self._current_product_context = ""
+        self._current_product_title = ""
+
+        # Create tools
+        self.tools = []
         if enable_web_search and self.serper_api_key:
-            print("✓ Web search enabled for Q&A")
+            print("✓ Web search enabled for Q&A (LangChain tool)")
+            # Create web search tool
+            search_tool = Tool(
+                name="web_search",
+                description="Useful for searching the internet for current information about products, prices, availability, comparisons, or any up-to-date information. Input should be a search query string.",
+                func=self._web_search_tool
+            )
+            self.tools.append(search_tool)
         elif enable_web_search and not self.serper_api_key:
             print("⚠ Web search disabled (SERPER_API_KEY not found)")
             self.enable_web_search = False
 
-        # Create prompt template for Q&A (with web search capability)
-        web_search_note = ""
-        if self.enable_web_search:
-            web_search_note = """
-WEB SEARCH RESULTS (if available):
-{web_search_results}
-"""
-
-        self.qa_template = f"""You are a helpful product analysis assistant. You answer questions about products based on the product data provided.
+        # Create agent prompt
+        if self.tools:
+            # Use ReAct agent prompt
+            self.agent_prompt = PromptTemplate.from_template("""You are a helpful product analysis assistant. Answer questions about products based on the product data and conversation history provided.
 
 PRODUCT DATA:
-{{product_context}}
-{web_search_note}
-CONVERSATION HISTORY:
-{{history}}
+{product_context}
 
-USER QUESTION: {{input}}
+CONVERSATION HISTORY:
+{history}
+
+You have access to the following tools:
+{tools}
+
+Tool Names: {tool_names}
 
 Guidelines:
 1. First check the PRODUCT DATA for the answer
-2. PRICE COMPARISON data shows prices across different platforms (Amazon, Flipkart, eBay, etc.) - use this to answer questions about:
-   - Where to buy the product
-   - Price differences across platforms
-   - Best deals and potential savings
-   - Platform-specific pricing
-3. If web search results are provided, use them for current/updated information (prices, availability, comparisons)
-4. If the information is not available in either source, clearly state what information is missing
+2. PRICE COMPARISON data shows prices across different platforms - use this to answer questions about where to buy, price differences, best deals, and savings
+3. Use the web_search tool ONLY when you need current/updated information that's not in the product data (like current market prices, latest comparisons, real-time availability)
+4. If information is in the product data, DO NOT use web_search - answer directly
 5. Be specific and quote from reviews when relevant
 6. When recommending where to buy, mention the platform, price, and any savings
 7. Keep answers concise but informative
-8. Maintain a helpful and professional tone
-9. When using web search data, mention "According to current search results..."
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Begin!
+
+Question: {input}
+Thought: {agent_scratchpad}""")
+
+            # Create agent
+            self.agent = create_react_agent(self.llm, self.tools, self.agent_prompt)
+            self.agent_executor = AgentExecutor(
+                agent=self.agent,
+                tools=self.tools,
+                verbose=True,
+                handle_parsing_errors=True,
+                max_iterations=3
+            )
+        else:
+            # No tools - simple prompt-based Q&A
+            self.qa_template = """You are a helpful product analysis assistant. You answer questions about products based on the product data provided.
+
+PRODUCT DATA:
+{product_context}
+
+CONVERSATION HISTORY:
+{history}
+
+USER QUESTION: {input}
+
+Guidelines:
+1. First check the PRODUCT DATA for the answer
+2. PRICE COMPARISON data shows prices across different platforms (Amazon, Flipkart, eBay, etc.) - use this to answer questions about where to buy, price differences, best deals, and savings
+3. If the information is not available, clearly state what information is missing
+4. Be specific and quote from reviews when relevant
+5. When recommending where to buy, mention the platform, price, and any savings
+6. Keep answers concise but informative
+7. Maintain a helpful and professional tone
 
 YOUR ANSWER:"""
 
-        if self.enable_web_search:
-            self.prompt = PromptTemplate(
-                input_variables=["product_context", "history", "input", "web_search_results"],
-                template=self.qa_template
-            )
-        else:
             self.prompt = PromptTemplate(
                 input_variables=["product_context", "history", "input"],
                 template=self.qa_template
@@ -371,34 +419,12 @@ YOUR ANSWER:"""
 
         return "\n".join(history)
 
-    def _should_search_web(self, question: str) -> bool:
+    def _web_search_tool(self, query: str) -> str:
         """
-        Determine if the question requires web search
+        Perform web search using Serper API (LangChain tool)
 
         Args:
-            question: User's question
-
-        Returns:
-            True if web search is needed, False otherwise
-        """
-        # Keywords that indicate need for current information
-        search_keywords = [
-            'current', 'latest', 'now', 'today', 'recent', 'updated',
-            'compare', 'vs', 'versus', 'alternative', 'similar',
-            'price', 'cost', 'buy', 'where to', 'available',
-            'in stock', 'sale', 'discount', 'offer', 'deal'
-        ]
-
-        question_lower = question.lower()
-        return any(keyword in question_lower for keyword in search_keywords)
-
-    def _web_search(self, query: str, num_results: int = 5) -> str:
-        """
-        Perform web search using Serper API
-
-        Args:
-            query: Search query
-            num_results: Number of results to fetch
+            query: Search query string
 
         Returns:
             Formatted search results string
@@ -407,9 +433,15 @@ YOUR ANSWER:"""
             return "Web search unavailable (API key not configured)"
 
         try:
+            # Combine with product title for better context
+            if self._current_product_title:
+                search_query = f"{self._current_product_title} {query}"
+            else:
+                search_query = query
+
             payload = {
-                "q": query,
-                "num": num_results
+                "q": search_query,
+                "num": 5  # Fixed to 5 results
             }
 
             headers = {
@@ -452,7 +484,7 @@ YOUR ANSWER:"""
 
     def ask(self, session_id: str, question: str) -> str:
         """
-        Ask a question about the product (with web search if needed)
+        Ask a question about the product (LLM decides whether to use web search tool)
 
         Args:
             session_id: Unique session identifier
@@ -476,33 +508,30 @@ YOUR ANSWER:"""
         product_context = self.format_product_context(product_data)
         history = self.format_history(messages)
 
-        # Check if web search is needed
-        web_search_results = ""
-        if self.enable_web_search and self._should_search_web(question):
-            print(f"  🔍 Web search triggered for: {question[:50]}...")
-            # Build search query based on product and question
-            product_title = product_data.get('title', '')
-            search_query = f"{product_title} {question}"
-            web_search_results = self._web_search(search_query, num_results=5)
+        # Store product title for web search tool context
+        self._current_product_context = product_context
+        self._current_product_title = product_data.get('title', '')
 
         # Generate answer
         try:
-            if self.enable_web_search:
-                full_prompt = self.prompt.format(
-                    product_context=product_context,
-                    history=history,
-                    input=question,
-                    web_search_results=web_search_results if web_search_results else "No web search performed"
-                )
+            if self.tools:
+                # Use agent with tools (LLM decides when to search)
+                response = self.agent_executor.invoke({
+                    "product_context": product_context,
+                    "history": history,
+                    "input": question,
+                    "agent_scratchpad": ""
+                })
+                answer = response.get('output', '').strip()
             else:
+                # No tools - direct prompt
                 full_prompt = self.prompt.format(
                     product_context=product_context,
                     history=history,
                     input=question
                 )
-
-            response = self.llm.invoke(full_prompt)
-            answer = response.content.strip()
+                response = self.llm.invoke(full_prompt)
+                answer = response.content.strip()
 
             # Save to Redis
             self.redis_memory.save_message(session_id, 'user', question)
