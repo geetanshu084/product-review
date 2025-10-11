@@ -238,9 +238,10 @@ Price by Platform (showing lowest prices):
 ```
 
 ### Implementation
-The LangChain tool-based web search is implemented in `src/chatbot.py`:
+The chatbot is implemented in `src/chatbot.py` using LangChain's standard components:
 
 **Architecture:**
+- **Memory**: LangChain's `RedisChatMessageHistory` (standard Redis backend)
 - **Agent Framework**: LangChain ReAct agent (`create_react_agent`)
 - **LLM**: Google Gemini (makes decisions about tool usage)
 - **Tool**: `web_search` tool using Serper API
@@ -248,7 +249,23 @@ The LangChain tool-based web search is implemented in `src/chatbot.py`:
 
 **Key Components:**
 
-1. **Tool Definition** (lines ~178-183):
+1. **Redis Message History** (LangChain standard):
+```python
+from langchain_community.chat_message_histories import RedisChatMessageHistory
+
+def _get_message_history(self, session_id: str):
+    return RedisChatMessageHistory(
+        session_id=session_id,
+        url=self.redis_url,
+        key_prefix="chat_history:"
+    )
+
+# Save messages
+message_history.add_user_message(question)
+message_history.add_ai_message(answer)
+```
+
+2. **Tool Definition**:
 ```python
 search_tool = Tool(
     name="web_search",
@@ -257,7 +274,7 @@ search_tool = Tool(
 )
 ```
 
-2. **Agent Creation** (lines ~230-237):
+3. **Agent Creation**:
 ```python
 self.agent = create_react_agent(self.llm, self.tools, self.agent_prompt)
 self.agent_executor = AgentExecutor(
@@ -269,7 +286,7 @@ self.agent_executor = AgentExecutor(
 )
 ```
 
-3. **Query Execution** (lines ~517-525):
+4. **Query Execution**:
 ```python
 if self.tools:
     # LLM decides whether to use web search

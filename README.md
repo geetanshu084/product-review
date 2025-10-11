@@ -221,6 +221,7 @@ The application will open in your default browser at `http://localhost:8501`
 ### Conversational Q&A System (`src/chatbot.py`)
 
 - **LangChain ReAct Agent**: LLM intelligently decides when to use web search tool
+- **LangChain RedisChatMessageHistory**: Standard Redis-backed conversation memory
 - Redis-backed persistent memory with full product data (including price comparison)
 - Maintains conversation context
 - Session-based conversation history

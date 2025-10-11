@@ -1,7 +1,7 @@
 """
 Conversational Q&A System Module
-Maintains conversation context using Redis for persistent memory
-Includes web search capability for up-to-date information via LangChain tools
+Uses LangChain's standard Redis chat message history for persistent memory
+Includes web search capability via LangChain tools
 """
 
 import json
@@ -11,100 +11,10 @@ import redis
 import requests
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.memory import ConversationBufferMemory
-from langchain.prompts import PromptTemplate, ChatPromptTemplate, MessagesPlaceholder
-from langchain.chains import ConversationChain
+from langchain.prompts import PromptTemplate
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain.tools import Tool
-from langchain import hub
-
-
-class RedisChatMemory:
-    """Redis-backed conversation memory"""
-
-    def __init__(self, redis_host: str, redis_port: int, redis_db: int, redis_password: Optional[str] = None):
-        """
-        Initialize Redis connection for conversation memory
-
-        Args:
-            redis_host: Redis host address
-            redis_port: Redis port number
-            redis_db: Redis database number
-            redis_password: Redis password (optional)
-        """
-        self.redis_client = redis.Redis(
-            host=redis_host,
-            port=redis_port,
-            db=redis_db,
-            password=redis_password,
-            decode_responses=True
-        )
-
-    def save_message(self, session_id: str, role: str, content: str):
-        """
-        Save a message to Redis
-
-        Args:
-            session_id: Unique session identifier
-            role: Message role (user/assistant)
-            content: Message content
-        """
-        key = f"chat:{session_id}:messages"
-        message = json.dumps({
-            'role': role,
-            'content': content
-        })
-        self.redis_client.rpush(key, message)
-
-    def get_messages(self, session_id: str) -> List[Dict]:
-        """
-        Retrieve all messages for a session
-
-        Args:
-            session_id: Unique session identifier
-
-        Returns:
-            List of message dictionaries
-        """
-        key = f"chat:{session_id}:messages"
-        messages = self.redis_client.lrange(key, 0, -1)
-        return [json.loads(msg) for msg in messages]
-
-    def clear_messages(self, session_id: str):
-        """
-        Clear all messages for a session
-
-        Args:
-            session_id: Unique session identifier
-        """
-        key = f"chat:{session_id}:messages"
-        self.redis_client.delete(key)
-
-    def save_product_data(self, session_id: str, product_data: Dict):
-        """
-        Save product data to Redis for this session
-
-        Args:
-            session_id: Unique session identifier
-            product_data: Product data dictionary
-        """
-        key = f"chat:{session_id}:product_data"
-        self.redis_client.set(key, json.dumps(product_data))
-
-    def get_product_data(self, session_id: str) -> Optional[Dict]:
-        """
-        Retrieve product data for a session
-
-        Args:
-            session_id: Unique session identifier
-
-        Returns:
-            Product data dictionary or None
-        """
-        key = f"chat:{session_id}:product_data"
-        data = self.redis_client.get(key)
-        if data:
-            return json.loads(data)
-        return None
+from langchain_community.chat_message_histories import RedisChatMessageHistory
 
 
 class ProductChatbot:
@@ -154,12 +64,16 @@ class ProductChatbot:
             google_api_key=api_key
         )
 
-        # Initialize Redis memory
-        self.redis_memory = RedisChatMemory(
-            redis_host=redis_host,
-            redis_port=redis_port,
-            redis_db=redis_db,
-            redis_password=redis_password
+        # Store Redis connection details for creating session-specific message histories
+        self.redis_url = f"redis://:{redis_password}@{redis_host}:{redis_port}/{redis_db}" if redis_password else f"redis://{redis_host}:{redis_port}/{redis_db}"
+
+        # Simple Redis client for product data storage (not messages)
+        self.redis_client = redis.Redis(
+            host=redis_host,
+            port=redis_port,
+            db=redis_db,
+            password=redis_password,
+            decode_responses=True
         )
 
         # Initialize web search if enabled
@@ -399,12 +313,12 @@ YOUR ANSWER:"""
 
         return "\n".join(context)
 
-    def format_history(self, messages: List[Dict]) -> str:
+    def format_history(self, messages) -> str:
         """
-        Format conversation history
+        Format conversation history from LangChain messages
 
         Args:
-            messages: List of message dictionaries
+            messages: List of LangChain BaseMessage objects
 
         Returns:
             Formatted history string
@@ -414,8 +328,9 @@ YOUR ANSWER:"""
 
         history = []
         for msg in messages[-6:]:  # Last 6 messages (3 exchanges)
-            role = "User" if msg['role'] == 'user' else "Assistant"
-            history.append(f"{role}: {msg['content']}")
+            # LangChain messages have .type attribute
+            role = "User" if msg.type == "human" else "Assistant"
+            history.append(f"{role}: {msg.content}")
 
         return "\n".join(history)
 
@@ -482,6 +397,22 @@ YOUR ANSWER:"""
         except Exception as e:
             return f"Web search failed: {str(e)}"
 
+    def _get_message_history(self, session_id: str) -> RedisChatMessageHistory:
+        """
+        Get LangChain RedisChatMessageHistory for a session
+
+        Args:
+            session_id: Unique session identifier
+
+        Returns:
+            RedisChatMessageHistory instance
+        """
+        return RedisChatMessageHistory(
+            session_id=session_id,
+            url=self.redis_url,
+            key_prefix="chat_history:"
+        )
+
     def ask(self, session_id: str, question: str) -> str:
         """
         Ask a question about the product (LLM decides whether to use web search tool)
@@ -497,12 +428,13 @@ YOUR ANSWER:"""
             ValueError: If no product data is available
         """
         # Get product data from Redis
-        product_data = self.redis_memory.get_product_data(session_id)
+        product_data = self.get_product_data(session_id)
         if not product_data:
             raise ValueError("Please analyze a product first before asking questions.")
 
-        # Get conversation history
-        messages = self.redis_memory.get_messages(session_id)
+        # Get conversation history using LangChain's RedisChatMessageHistory
+        message_history = self._get_message_history(session_id)
+        messages = message_history.messages
 
         # Format context and history
         product_context = self.format_product_context(product_data)
@@ -533,9 +465,9 @@ YOUR ANSWER:"""
                 response = self.llm.invoke(full_prompt)
                 answer = response.content.strip()
 
-            # Save to Redis
-            self.redis_memory.save_message(session_id, 'user', question)
-            self.redis_memory.save_message(session_id, 'assistant', answer)
+            # Save to Redis using LangChain's message history
+            message_history.add_user_message(question)
+            message_history.add_ai_message(answer)
 
             return answer
 
@@ -550,7 +482,24 @@ YOUR ANSWER:"""
             session_id: Unique session identifier
             product_data: Product data dictionary
         """
-        self.redis_memory.save_product_data(session_id, product_data)
+        key = f"product_data:{session_id}"
+        self.redis_client.set(key, json.dumps(product_data))
+
+    def get_product_data(self, session_id: str) -> Optional[Dict]:
+        """
+        Get product data for a session
+
+        Args:
+            session_id: Unique session identifier
+
+        Returns:
+            Product data dictionary or None
+        """
+        key = f"product_data:{session_id}"
+        data = self.redis_client.get(key)
+        if data:
+            return json.loads(data)
+        return None
 
     def get_conversation_history(self, session_id: str) -> List[Dict]:
         """
@@ -560,9 +509,19 @@ YOUR ANSWER:"""
             session_id: Unique session identifier
 
         Returns:
-            List of message dictionaries
+            List of message dictionaries (for compatibility)
         """
-        return self.redis_memory.get_messages(session_id)
+        message_history = self._get_message_history(session_id)
+        messages = message_history.messages
+
+        # Convert LangChain messages to dict format for compatibility
+        return [
+            {
+                'role': 'user' if msg.type == 'human' else 'assistant',
+                'content': msg.content
+            }
+            for msg in messages
+        ]
 
     def clear_conversation(self, session_id: str):
         """
@@ -571,7 +530,8 @@ YOUR ANSWER:"""
         Args:
             session_id: Unique session identifier
         """
-        self.redis_memory.clear_messages(session_id)
+        message_history = self._get_message_history(session_id)
+        message_history.clear()
 
     def clear_all_data(self, session_id: str):
         """
@@ -580,6 +540,10 @@ YOUR ANSWER:"""
         Args:
             session_id: Unique session identifier
         """
-        self.redis_memory.clear_messages(session_id)
-        key = f"chat:{session_id}:product_data"
-        self.redis_memory.redis_client.delete(key)
+        # Clear conversation history
+        message_history = self._get_message_history(session_id)
+        message_history.clear()
+
+        # Clear product data
+        key = f"product_data:{session_id}"
+        self.redis_client.delete(key)
