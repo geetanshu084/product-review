@@ -229,13 +229,21 @@ class AmazonScraper:
                         reviews.extend(additional_reviews)
             else:
                 # Traditional scraping (original method)
-                print(f"📄 Using traditional scraper")
+                print(f"📄 Using traditional scraper (target: {self.max_reviews} reviews)")
 
                 # Get reviews from the product page (typically 8-10 reviews)
                 reviews = self._scrape_reviews_from_product_page(soup)
                 print(f"  ✓ Scraped {len(reviews)} reviews from product page")
-                print(f"  ℹ️  Note: Due to Amazon's JavaScript-based reviews page and bot protection,")
-                print(f"     pagination is not possible with traditional HTTP scraping.")
+
+                # Try AJAX endpoint for more reviews
+                if len(reviews) < self.max_reviews:
+                    print(f"  🔄 Attempting AJAX pagination for more reviews...")
+                    ajax_reviews = self._scrape_reviews_ajax(asin, domain, max_reviews=self.max_reviews - len(reviews))
+                    if ajax_reviews:
+                        reviews.extend(ajax_reviews)
+                        print(f"  ✅ Added {len(ajax_reviews)} reviews via AJAX")
+                    else:
+                        print(f"  ℹ️  AJAX pagination blocked - limited to product page reviews")
 
             print(f"Total reviews scraped: {len(reviews)}\n")
             product_data['reviews'] = reviews
@@ -788,6 +796,74 @@ class AmazonScraper:
             print(f"Error extracting category: {str(e)}")
 
         return category if category else "Category not found"
+
+    def _scrape_reviews_ajax(self, asin: str, domain: str, max_reviews: int = 100) -> List[Dict]:
+        """
+        Try to scrape reviews using AJAX endpoint (if available)
+
+        Args:
+            asin: Product ASIN
+            domain: Amazon domain
+            max_reviews: Maximum reviews to fetch
+
+        Returns:
+            List of review dictionaries (empty if blocked)
+        """
+        reviews = []
+
+        try:
+            # Try AJAX endpoint pattern (may work in some regions)
+            for page_num in range(2, min(12, (max_reviews // 10) + 3)):  # Pages 2-11
+                ajax_url = f"https://www.{domain}/hz/reviews-render/ajax/reviews/get/?asin={asin}&pageNumber={page_num}&pageSize=10"
+
+                headers = {
+                    'Accept': 'text/html,*/*',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Referer': f'https://www.{domain}/product-reviews/{asin}',
+                }
+
+                try:
+                    response = self.session.get(ajax_url, headers=headers, timeout=10)
+
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.content, 'lxml')
+                        review_divs = soup.find_all('div', {'data-hook': 'review'})
+
+                        if review_divs:
+                            print(f"    📄 AJAX Page {page_num}: {len(review_divs)} reviews")
+
+                            for review_div in review_divs:
+                                if len(reviews) >= max_reviews:
+                                    break
+
+                                review_data = {
+                                    'title': self._extract_review_title(review_div),
+                                    'rating': self._extract_review_rating(review_div),
+                                    'text': self._extract_review_text(review_div),
+                                    'author': self._extract_review_author(review_div),
+                                    'date': self._extract_review_date(review_div),
+                                    'verified': self._extract_review_verified(review_div)
+                                }
+
+                                if review_data['text'] or review_data['title']:
+                                    reviews.append(review_data)
+                        else:
+                            break  # No more reviews
+                    else:
+                        break  # API blocked or unauthorized
+
+                    time.sleep(1)  # Rate limiting
+
+                    if len(reviews) >= max_reviews:
+                        break
+
+                except Exception:
+                    break
+
+        except Exception:
+            pass
+
+        return reviews
 
     def _scrape_reviews_multipage(self, asin: str, max_reviews: int = 200, domain: str = "amazon.com", sort_param: str = '') -> List[Dict]:
         """
