@@ -107,22 +107,6 @@ class ProductChatbot:
                 "Please ensure config/prompts/agent_prompt.txt exists."
             )
 
-    def _get_message_history(self, session_id: str) -> RedisChatMessageHistory:
-        """
-        Get LangChain RedisChatMessageHistory for a session
-
-        Args:
-            session_id: Unique session identifier
-
-        Returns:
-            RedisChatMessageHistory instance
-        """
-        return RedisChatMessageHistory(
-            session_id=session_id,
-            url=self.redis_url,
-            key_prefix="chat_history:"
-        )
-
     def ask(self, session_id: str, question: str) -> str:
         """
         Ask a question about the product (LLM decides whether to use web search tool)
@@ -149,9 +133,13 @@ class ProductChatbot:
         # This handles ReAct format, tools, and scratchpad automatically
         try:
             # Create session-specific memory with RedisChatMessageHistory
-            message_history = self._get_message_history(session_id)
+            # LangChain manages the conversation history automatically
             memory = ConversationBufferMemory(
-                chat_memory=message_history,
+                chat_memory=RedisChatMessageHistory(
+                    session_id=session_id,
+                    url=self.redis_url,
+                    key_prefix="chat_history:"
+                ),
                 memory_key="chat_history",
                 return_messages=True
             )
@@ -217,7 +205,7 @@ class ProductChatbot:
 
     def get_conversation_history(self, session_id: str) -> List[Dict]:
         """
-        Get conversation history for a session
+        Get conversation history for a session (for UI display)
 
         Args:
             session_id: Unique session identifier
@@ -225,7 +213,11 @@ class ProductChatbot:
         Returns:
             List of message dictionaries (for compatibility)
         """
-        message_history = self._get_message_history(session_id)
+        message_history = RedisChatMessageHistory(
+            session_id=session_id,
+            url=self.redis_url,
+            key_prefix="chat_history:"
+        )
         messages = message_history.messages
 
         # Convert LangChain messages to dict format for compatibility
@@ -244,8 +236,11 @@ class ProductChatbot:
         Args:
             session_id: Unique session identifier
         """
-        message_history = self._get_message_history(session_id)
-        message_history.clear()
+        RedisChatMessageHistory(
+            session_id=session_id,
+            url=self.redis_url,
+            key_prefix="chat_history:"
+        ).clear()
 
     def clear_all_data(self, session_id: str):
         """
@@ -255,8 +250,11 @@ class ProductChatbot:
             session_id: Unique session identifier
         """
         # Clear conversation history
-        message_history = self._get_message_history(session_id)
-        message_history.clear()
+        RedisChatMessageHistory(
+            session_id=session_id,
+            url=self.redis_url,
+            key_prefix="chat_history:"
+        ).clear()
 
         # Clear product data
         key = f"product_data:{session_id}"
