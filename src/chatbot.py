@@ -11,8 +11,7 @@ import redis
 import requests
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.memory import ConversationBufferMemory
-from langchain.prompts import PromptTemplate
-from langchain.agents import AgentExecutor, create_react_agent
+from langchain.agents import initialize_agent, AgentType
 from langchain.tools import Tool
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 
@@ -97,12 +96,9 @@ class ProductChatbot:
             print("⚠ Web search disabled (SERPER_API_KEY not found)")
             self.enable_web_search = False
 
-        # Single system prompt - works with or without tools
-        # Build template using string concatenation to avoid .format() issues
-        system_prompt_start = """You are a helpful product analysis assistant. Answer questions about products based on the provided product data.
-
-PRODUCT DATA:
-{product_context}
+        # System prefix for agent - just high-level instructions
+        # LangChain's initialize_agent handles ReAct format, tools, scratchpad automatically
+        self.agent_prefix = """You are a helpful product analysis assistant. Answer questions about products based on the provided product data.
 
 Guidelines:
 1. First check the PRODUCT DATA for the answer
@@ -112,53 +108,9 @@ Guidelines:
 5. Be specific and quote from reviews when relevant
 6. When recommending where to buy, mention the platform, price, and any savings
 7. Keep answers concise but informative
-"""
 
-        # Tool section - only include if tools are available
-        tool_section = """
-TOOLS:
-------
-You have access to the following tools:
-
-{tools}
-
-To use a tool, use this format:
-```
-Thought: Do I need to use a tool? Yes
-Action: the action to take, should be one of [{tool_names}]
-Action Input: the input to the action
-Observation: the result of the action
-```
-
-When you have a response, or if you do not need to use a tool:
-```
-Thought: Do I need to use a tool? No
-Final Answer: [your response here]
-```
-""" if self.tools else ""
-
-        system_prompt_end = """
-Begin!
-
-Question: {input}
-{agent_scratchpad}"""
-
-        # Build full template using string concatenation
-        full_template = system_prompt_start + tool_section + system_prompt_end
-
-        # Define input variables based on whether tools are present
-        if self.tools:
-            input_vars = ["product_context", "input", "agent_scratchpad", "tools", "tool_names"]
-        else:
-            input_vars = ["product_context", "input", "agent_scratchpad"]
-
-        self.agent_prompt = PromptTemplate(
-            input_variables=input_vars,
-            template=full_template
-        )
-
-        # Create agent - works with or without tools (empty list is fine)
-        self.agent = create_react_agent(self.llm, self.tools, self.agent_prompt)
+PRODUCT DATA:
+{product_context}"""
 
     def format_product_context(self, product_data: Dict) -> str:
         """
@@ -401,37 +353,40 @@ Question: {input}
         self._current_product_context = product_context
         self._current_product_title = product_data.get('title', '')
 
-        # Generate answer using unified agent approach
+        # Generate answer using LangChain's initialize_agent
+        # This handles ReAct format, tools, and scratchpad automatically
         try:
             # Create session-specific memory with RedisChatMessageHistory
             message_history = self._get_message_history(session_id)
             memory = ConversationBufferMemory(
                 chat_memory=message_history,
                 memory_key="chat_history",
-                input_key="input",  # Specify which key is the main input
                 return_messages=True
             )
 
-            # Create AgentExecutor with memory (works with or without tools)
-            # LangChain handles everything automatically
-            agent_executor = AgentExecutor(
-                agent=self.agent,
-                tools=self.tools,  # Can be empty list - LangChain handles it
+            # Format the agent prefix with product context
+            agent_prefix_formatted = self.agent_prefix.format(product_context=product_context)
+
+            # Use initialize_agent - LangChain handles everything automatically:
+            # - ReAct format (Thought/Action/Observation)
+            # - Tool descriptions and invocation
+            # - Agent scratchpad management
+            # - Conversation memory integration
+            agent = initialize_agent(
+                tools=self.tools,  # Can be empty list
+                llm=self.llm,
+                agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                 memory=memory,
                 verbose=True,
                 handle_parsing_errors=True,
-                max_iterations=3
+                max_iterations=3,
+                agent_kwargs={
+                    "prefix": agent_prefix_formatted
+                }
             )
 
-            # Invoke - LangChain automatically handles:
-            # - conversation history (from memory)
-            # - agent_scratchpad (intermediate steps)
-            # - ReAct format (thought/action/observation loop)
-            # - Tool execution (if tools available)
-            response = agent_executor.invoke({
-                "product_context": product_context,
-                "input": question
-            })
+            # Invoke agent - LangChain handles all the complexity
+            response = agent.invoke({"input": question})
             answer = response.get('output', '').strip()
 
             return answer
