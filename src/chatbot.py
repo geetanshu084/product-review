@@ -77,8 +77,7 @@ class ProductChatbot:
         self.enable_web_search = enable_web_search
         self.serper_api_key = serper_api_key or os.getenv('SERPER_API_KEY')
 
-        # Store for product context (used by tools)
-        self._current_product_context = ""
+        # Store for product title (used by web search tool)
         self._current_product_title = ""
 
         # Create tools
@@ -96,157 +95,23 @@ class ProductChatbot:
             print("⚠ Web search disabled (SERPER_API_KEY not found)")
             self.enable_web_search = False
 
-        # System prefix for agent - just high-level instructions
+        # System prefix template for agent - just high-level instructions
         # LangChain's initialize_agent handles ReAct format, tools, scratchpad automatically
-        self.agent_prefix = """You are a helpful product analysis assistant. Answer questions about products based on the provided product data.
+        # Note: Product data will be inserted via string replacement (not .format())
+        self.agent_prefix_template = """You are a helpful product analysis assistant. Answer questions about products based on the provided product data.
 
 Guidelines:
-1. First check the PRODUCT DATA for the answer
-2. PRICE COMPARISON data shows prices across different platforms - use this to answer questions about where to buy, price differences, best deals, and savings
-3. Use the web_search tool ONLY when you need current/updated information that's not in the product data (like current market prices, latest comparisons, real-time availability)
-4. If information is in the product data, DO NOT use web_search - answer directly
-5. Be specific and quote from reviews when relevant
-6. When recommending where to buy, mention the platform, price, and any savings
-7. Keep answers concise but informative
+1. First check the PRODUCT DATA (JSON format) for the answer
+2. The product data includes: title, brand, price, rating, features, reviews, specifications, warranty, bank_offers, etc.
+3. If there's a 'price_comparison' field, it shows prices across different platforms (Amazon, Flipkart, eBay, etc.) - use this to answer questions about where to buy, price differences, best deals, and savings
+4. Use the web_search tool ONLY when you need current/updated information that's not in the product data (like current market prices, latest comparisons, real-time availability)
+5. If information is in the product data, DO NOT use web_search - answer directly
+6. Be specific and quote from reviews when relevant
+7. When recommending where to buy, mention the platform, price, and any savings
+8. Keep answers concise but informative
 
-PRODUCT DATA:
-{product_context}"""
-
-    def format_product_context(self, product_data: Dict) -> str:
-        """
-        Format product data for context
-
-        Args:
-            product_data: Product data dictionary
-
-        Returns:
-            Formatted string
-        """
-        context = []
-
-        # Basic information
-        context.append("=== BASIC INFORMATION ===")
-        context.append(f"Product: {product_data.get('title', 'N/A')}")
-        context.append(f"Brand: {product_data.get('brand', 'N/A')}")
-        context.append(f"Category: {product_data.get('category', 'N/A')}")
-        context.append(f"Price: {product_data.get('price', 'N/A')}")
-        context.append(f"Rating: {product_data.get('rating', 'N/A')}")
-        context.append(f"Total Reviews: {product_data.get('total_reviews', 'N/A')}")
-        context.append(f"Availability: {product_data.get('availability', 'N/A')}")
-        context.append("")
-
-        # Product features
-        if product_data.get('features'):
-            context.append("=== PRODUCT FEATURES ===")
-            for feature in product_data['features']:
-                context.append(f"- {feature}")
-            context.append("")
-
-        # Product specifications
-        specifications = product_data.get('specifications', {})
-        if specifications:
-            context.append("=== SPECIFICATIONS ===")
-            for key, value in specifications.items():
-                context.append(f"{key}: {value}")
-            context.append("")
-
-        # Product details (dimensions, weight, etc.)
-        product_details = product_data.get('product_details', {})
-        if product_details:
-            context.append("=== PRODUCT DETAILS ===")
-            for key, value in product_details.items():
-                context.append(f"{key}: {value}")
-            context.append("")
-
-        # Technical details
-        technical_details = product_data.get('technical_details', {})
-        if technical_details:
-            context.append("=== TECHNICAL DETAILS ===")
-            for key, value in technical_details.items():
-                context.append(f"{key}: {value}")
-            context.append("")
-
-        # Additional information
-        additional_info = product_data.get('additional_information', {})
-        if additional_info:
-            context.append("=== ADDITIONAL INFORMATION ===")
-            for key, value in additional_info.items():
-                context.append(f"{key}: {value}")
-            context.append("")
-
-        # Warranty
-        warranty = product_data.get('warranty', '')
-        if warranty and warranty != "Warranty information not available":
-            context.append("=== WARRANTY ===")
-            context.append(warranty)
-            context.append("")
-
-        # Bank offers
-        bank_offers = product_data.get('bank_offers', [])
-        if bank_offers:
-            context.append("=== BANK OFFERS ===")
-            for i, offer in enumerate(bank_offers, 1):
-                context.append(f"{i}. {offer.get('bank', 'Bank')}: {offer.get('offer_type', 'Offer')} - {offer.get('description', '')}")
-                if offer.get('terms'):
-                    context.append(f"   Terms: {offer['terms']}")
-            context.append("")
-
-        # Customer reviews
-        reviews = product_data.get('reviews', [])
-        if reviews:
-            context.append(f"=== CUSTOMER REVIEWS ({len(reviews)} reviews) ===")
-            for i, review in enumerate(reviews[:10], 1):
-                context.append(f"{i}. [{review.get('rating', 'N/A')}] {review.get('title', '')}")
-                context.append(f"   {review.get('text', '')[:200]}...")
-            context.append("")
-
-        # Price comparison data
-        price_comparison = product_data.get('price_comparison')
-        if price_comparison and price_comparison.get('total_results', 0) > 0:
-            context.append("=== PRICE COMPARISON ACROSS PLATFORMS ===")
-            context.append(f"Total Results Found: {price_comparison['total_results']}")
-            context.append("")
-
-            # Price statistics
-            stats = price_comparison.get('price_stats', {})
-            if stats and stats.get('total_results', 0) > 0:
-                context.append("Price Statistics:")
-                currency = "INR"  # Default currency
-                context.append(f"  Minimum Price: {currency} {stats.get('min_price', 0):.2f}")
-                context.append(f"  Maximum Price: {currency} {stats.get('max_price', 0):.2f}")
-                context.append(f"  Average Price: {currency} {stats.get('avg_price', 0):.2f}")
-                context.append(f"  Median Price: {currency} {stats.get('median_price', 0):.2f}")
-                context.append("")
-
-            # Best deal
-            best_deal = price_comparison.get('best_deal')
-            if best_deal:
-                context.append("Best Deal Found:")
-                context.append(f"  Platform: {best_deal['platform'].upper()}")
-                context.append(f"  Seller: {best_deal['seller']}")
-                context.append(f"  Price: {best_deal['currency']} {best_deal['price']:.2f}")
-                context.append(f"  Rating: {best_deal.get('rating', 'N/A')}")
-                context.append(f"  Potential Savings: {best_deal['currency']} {best_deal['savings']:.2f} ({best_deal['savings_percent']:.1f}%)")
-                context.append(f"  URL: {best_deal.get('url', 'N/A')}")
-                context.append("")
-
-            # Platform breakdown (show top 3 from each platform)
-            platforms = price_comparison.get('price_comparison', {})
-            if platforms:
-                context.append("Price by Platform (showing lowest prices):")
-                for platform, items in platforms.items():
-                    if items:
-                        # Sort by price and show top 3
-                        sorted_items = sorted(items, key=lambda x: x['price'])[:3]
-                        context.append(f"  {platform.upper()} ({len(items)} total results):")
-                        for idx, item in enumerate(sorted_items, 1):
-                            context.append(f"    {idx}. {item['currency']} {item['price']:.2f} - {item['seller']}")
-                            if item.get('rating'):
-                                context.append(f"       Rating: {item['rating']}, Reviews: {item.get('reviews', 0)}")
-                            context.append(f"       URL: {item.get('url', 'N/A')}")
-                context.append("")
-
-        return "\n".join(context)
+PRODUCT DATA (JSON):
+<<PRODUCT_DATA>>"""
 
     def _web_search_tool(self, query: str) -> str:
         """
@@ -346,11 +211,10 @@ PRODUCT DATA:
         if not product_data:
             raise ValueError("Please analyze a product first before asking questions.")
 
-        # Format product context
-        product_context = self.format_product_context(product_data)
+        # Convert product data to JSON string for LLM context
+        product_data_json = json.dumps(product_data, indent=2, ensure_ascii=False)
 
         # Store product title for web search tool context
-        self._current_product_context = product_context
         self._current_product_title = product_data.get('title', '')
 
         # Generate answer using LangChain's initialize_agent
@@ -364,8 +228,10 @@ PRODUCT DATA:
                 return_messages=True
             )
 
-            # Format the agent prefix with product context
-            agent_prefix_formatted = self.agent_prefix.format(product_context=product_context)
+            # Insert product data JSON into agent prefix using string replacement
+            # Escape JSON curly braces for PromptTemplate by doubling them: { becomes {{
+            product_data_escaped = product_data_json.replace('{', '{{').replace('}', '}}')
+            agent_prefix_formatted = self.agent_prefix_template.replace('<<PRODUCT_DATA>>', product_data_escaped)
 
             # Use initialize_agent - LangChain handles everything automatically:
             # - ReAct format (Thought/Action/Observation)
