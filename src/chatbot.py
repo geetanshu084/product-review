@@ -8,12 +8,12 @@ import json
 import os
 from typing import Dict, List, Optional
 import redis
-import requests
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.memory import ConversationBufferMemory
 from langchain.agents import initialize_agent, AgentType
-from langchain.tools import Tool
 from langchain_community.chat_message_histories import RedisChatMessageHistory
+from langchain_community.utilities import GoogleSerperAPIWrapper
+from langchain.tools import Tool
 
 
 class ProductChatbot:
@@ -77,20 +77,19 @@ class ProductChatbot:
         self.enable_web_search = enable_web_search
         self.serper_api_key = serper_api_key or os.getenv('SERPER_API_KEY')
 
-        # Store for product title (used by web search tool)
-        self._current_product_title = ""
-
-        # Create tools
+        # Create tools using LangChain's built-in GoogleSerperAPIWrapper
         self.tools = []
         if enable_web_search and self.serper_api_key:
-            print("✓ Web search enabled for Q&A (LangChain tool)")
-            # Create web search tool
+            print("✓ Web search enabled for Q&A (LangChain built-in tool)")
+            # Use LangChain's GoogleSerperAPIWrapper for Serper API
+            # This automatically handles the API calls and formatting
+            search = GoogleSerperAPIWrapper(serper_api_key=self.serper_api_key)
             search_tool = Tool(
-                name="web_search",
+                name="Search",
                 description="Useful for searching the internet for current information about products, prices, availability, comparisons, or any up-to-date information. Input should be a search query string.",
-                func=self._web_search_tool
+                func=search.run
             )
-            self.tools.append(search_tool)
+            self.tools = [search_tool]
         elif enable_web_search and not self.serper_api_key:
             print("⚠ Web search disabled (SERPER_API_KEY not found)")
             self.enable_web_search = False
@@ -112,69 +111,6 @@ Guidelines:
 
 PRODUCT DATA (JSON):
 <<PRODUCT_DATA>>"""
-
-    def _web_search_tool(self, query: str) -> str:
-        """
-        Perform web search using Serper API (LangChain tool)
-
-        Args:
-            query: Search query string
-
-        Returns:
-            Formatted search results string
-        """
-        if not os.getenv('SERPER_API_KEY'):
-            return "Web search unavailable (API key not configured)"
-
-        try:
-            # Combine with product title for better context
-            if self._current_product_title:
-                search_query = f"{self._current_product_title} {query}"
-            else:
-                search_query = query
-
-            payload = {
-                "q": search_query,
-                "num": 5  # Fixed to 5 results
-            }
-
-            headers = {
-                "X-API-KEY": os.getenv('SERPER_API_KEY'),
-                "Content-Type": "application/json"
-            }
-
-            response = requests.post(
-                "https://google.serper.dev/search",
-                json=payload,
-                headers=headers,
-                timeout=10
-            )
-
-            if response.status_code != 200:
-                return f"Web search error: HTTP {response.status_code}"
-
-            data = response.json()
-            organic_results = data.get("organic", [])
-
-            if not organic_results:
-                return "No search results found"
-
-            # Format results
-            formatted_results = []
-            formatted_results.append(f"Search query: {query}")
-            formatted_results.append(f"Found {len(organic_results)} results:")
-            formatted_results.append("")
-
-            for i, result in enumerate(organic_results[:5], 1):
-                formatted_results.append(f"{i}. {result.get('title', 'N/A')}")
-                formatted_results.append(f"   {result.get('snippet', 'N/A')}")
-                formatted_results.append(f"   Source: {result.get('link', 'N/A')}")
-                formatted_results.append("")
-
-            return "\n".join(formatted_results)
-
-        except Exception as e:
-            return f"Web search failed: {str(e)}"
 
     def _get_message_history(self, session_id: str) -> RedisChatMessageHistory:
         """
@@ -213,9 +149,6 @@ PRODUCT DATA (JSON):
 
         # Convert product data to JSON string for LLM context
         product_data_json = json.dumps(product_data, indent=2, ensure_ascii=False)
-
-        # Store product title for web search tool context
-        self._current_product_title = product_data.get('title', '')
 
         # Generate answer using LangChain's initialize_agent
         # This handles ReAct format, tools, and scratchpad automatically
