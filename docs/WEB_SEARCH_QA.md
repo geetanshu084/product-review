@@ -91,16 +91,13 @@ SERPER_API_KEY=your_serper_api_key_here
 ```
 
 ### 3. Enable Web Search
-Web search is enabled by default. To use it:
+Web search is enabled by default when SERPER_API_KEY is set in `.env`:
 
 ```python
 from src.chatbot import ProductChatbot
 
-chatbot = ProductChatbot(
-    google_api_key="your_google_api_key",
-    serper_api_key="your_serper_api_key",
-    enable_web_search=True  # Default: True
-)
+# Initialize chatbot - reads all config from environment variables
+chatbot = ProductChatbot()
 ```
 
 ## Usage
@@ -110,11 +107,8 @@ chatbot = ProductChatbot(
 ```python
 from src.chatbot import ProductChatbot
 
-# Initialize chatbot
-chatbot = ProductChatbot(
-    google_api_key="your_google_api_key",
-    serper_api_key="your_serper_api_key"
-)
+# Initialize chatbot - reads GOOGLE_API_KEY and SERPER_API_KEY from environment
+chatbot = ProductChatbot()
 
 # Set product data
 session_id = "user_session_123"
@@ -131,13 +125,7 @@ print(answer)
 To disable web search:
 
 ```python
-# Option 1: Pass parameter
-chatbot = ProductChatbot(
-    google_api_key="your_google_api_key",
-    enable_web_search=False
-)
-
-# Option 2: Don't set SERPER_API_KEY in .env
+# Don't set SERPER_API_KEY in .env
 # Web search will automatically disable if no API key is found
 ```
 

@@ -10,28 +10,12 @@ from src.chatbot import ProductChatbot
 
 load_dotenv()
 
-# Get API keys
-google_api_key = os.getenv("GOOGLE_API_KEY")
-serper_api_key = os.getenv("SERPER_API_KEY")
-
-if not google_api_key:
-    print("❌ GOOGLE_API_KEY not found")
-    exit(1)
-
-if not serper_api_key:
-    print("❌ SERPER_API_KEY not found")
-    exit(1)
-
 print("="*80)
 print("🧪 TESTING LANGCHAIN TOOL-BASED WEB SEARCH")
 print("="*80)
 
-# Initialize chatbot with LangChain tool integration
-chatbot = ProductChatbot(
-    google_api_key=google_api_key,
-    serper_api_key=serper_api_key,
-    enable_web_search=True
-)
+# Initialize chatbot - reads config from environment variables
+chatbot = ProductChatbot()
 
 # Create test session
 session_id = "test_langchain_tool_session"

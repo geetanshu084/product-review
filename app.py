@@ -55,27 +55,21 @@ def initialize_session_state():
             st.session_state.analyzer_error = "GOOGLE_API_KEY not found in .env file"
 
     if 'chatbot' not in st.session_state:
-        google_api_key = os.getenv('GOOGLE_API_KEY')
-        redis_host = os.getenv('REDIS_HOST', 'localhost')
-        redis_port = int(os.getenv('REDIS_PORT', 6379))
-        redis_db = int(os.getenv('REDIS_DB', 0))
-        redis_password = os.getenv('REDIS_PASSWORD', None)
+        # google_api_key = os.getenv('GOOGLE_API_KEY')
+        # redis_host = os.getenv('REDIS_HOST', 'localhost')
+        # redis_port = int(os.getenv('REDIS_PORT', 6379))
+        # redis_db = int(os.getenv('REDIS_DB', 0))
+        # redis_password = os.getenv('REDIS_PASSWORD', None)
 
-        if google_api_key:
-            try:
-                st.session_state.chatbot = ProductChatbot(
-                    google_api_key=google_api_key,
-                    redis_host=redis_host,
-                    redis_port=redis_port,
-                    redis_db=redis_db,
-                    redis_password=redis_password if redis_password else None
-                )
-            except Exception as e:
-                st.session_state.chatbot = None
-                st.session_state.redis_error = str(e)
-        else:
+        # if google_api_key:
+        try:
+            st.session_state.chatbot = ProductChatbot()
+        except Exception as e:
             st.session_state.chatbot = None
-            st.session_state.redis_error = "GOOGLE_API_KEY not found in .env file"
+            st.session_state.redis_error = str(e)
+        # else:
+        #     st.session_state.chatbot = None
+        #     st.session_state.redis_error = "GOOGLE_API_KEY not found in .env file"
 
 
 def show_sidebar():

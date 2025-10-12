@@ -53,14 +53,14 @@ def example_analysis(product_data):
     print("EXAMPLE 2: Analyzing Product with AI")
     print("=" * 60)
 
-    # Get GCP credentials path
-    credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-    if not credentials_path or not os.path.exists(credentials_path):
-        print("\n✗ GOOGLE_APPLICATION_CREDENTIALS not found or file doesn't exist")
+    # Get Google API key
+    google_api_key = os.getenv('GOOGLE_API_KEY')
+    if not google_api_key:
+        print("\n✗ GOOGLE_API_KEY not found in .env")
         return None
 
     # Initialize analyzer
-    analyzer = ProductAnalyzer(credentials_path=credentials_path)
+    analyzer = ProductAnalyzer(google_api_key=google_api_key)
 
     print("\nAnalyzing product with Google Gemini...")
 
@@ -86,15 +86,9 @@ def example_qa(product_data):
     print("EXAMPLE 3: Q&A with Chatbot")
     print("=" * 60)
 
-    # Get GCP credentials path
-    credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-    if not credentials_path or not os.path.exists(credentials_path):
-        print("\n✗ GOOGLE_APPLICATION_CREDENTIALS not found or file doesn't exist")
-        return
-
     try:
-        # Initialize chatbot
-        chatbot = ProductChatbot(credentials_path=credentials_path)
+        # Initialize chatbot - reads config from environment variables
+        chatbot = ProductChatbot()
 
         # Create a session
         session_id = "example_session"

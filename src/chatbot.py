@@ -19,48 +19,20 @@ from langchain.tools import Tool
 
 class ProductChatbot:
 
-    def __init__(
-        self,
-        redis_host: str = "localhost",
-        redis_port: int = 6379,
-        redis_db: int = 0,
-        redis_password: Optional[str] = None,
-        model_name: str = "gemini-2.0-flash-exp",
-        google_api_key: Optional[str] = None,
-        serper_api_key: Optional[str] = None,
-        enable_web_search: bool = True
-    ):
-        """
-        Initialize the chatbot
+    def __init__(self):
 
-        Args:
-            credentials_path: Path to GCP service account JSON file (deprecated - use google_api_key instead)
-            redis_host: Redis host address
-            redis_port: Redis port number
-            redis_db: Redis database number
-            redis_password: Redis password (optional)
-            model_name: Name of the Gemini model to use
-            google_api_key: Google API key for Gemini (recommended)
-            serper_api_key: Serper API key for web search (optional)
-            enable_web_search: Enable web search capability (default: True)
-        """
-        # Check for API key first (recommended approach)
-        # api_key = os.getenv('GOOGLE_API_KEY')
-
-        if not os.getenv('GOOGLE_API_KEY'):
-            raise ValueError(
-                "Google API key is required. Please either:\n"
-                "1. Set GOOGLE_API_KEY environment variable in your .env file, or\n"
-                "2. Pass google_api_key parameter\n\n"
-                "Get your API key from: https://makersuite.google.com/app/apikey"
-            )
-
+        # Initialize LLM
         self.llm = ChatGoogleGenerativeAI(
-            model=model_name,
+            model=os.getenv('MODEL_NAME', 'gemini-2.5-flash'),
             temperature=0.5,
-            convert_system_message_to_human=True,
-            google_api_key=os.getenv('GOOGLE_API_KEY')
+            convert_system_message_to_human=True
         )
+
+        # Read Redis configuration from environment
+        redis_host = os.getenv('REDIS_HOST', 'localhost')
+        redis_port = int(os.getenv('REDIS_PORT', '6379'))
+        redis_db = int(os.getenv('REDIS_DB', '0'))
+        redis_password = os.getenv('REDIS_PASSWORD')
 
         # Store Redis connection details for creating session-specific message histories
         self.redis_url = f"redis://:{redis_password}@{redis_host}:{redis_port}/{redis_db}" if redis_password else f"redis://{redis_host}:{redis_port}/{redis_db}"
@@ -74,26 +46,16 @@ class ProductChatbot:
             decode_responses=True
         )
 
-        # Initialize web search if enabled
-        self.enable_web_search = enable_web_search
-        self.serper_api_key = serper_api_key or os.getenv('SERPER_API_KEY')
-
-        # Create tools using LangChain's built-in GoogleSerperAPIWrapper
         self.tools = []
-        if enable_web_search and self.serper_api_key:
-            print("✓ Web search enabled for Q&A (LangChain built-in tool)")
-            # Use LangChain's GoogleSerperAPIWrapper for Serper API
-            # This automatically handles the API calls and formatting
-            search = GoogleSerperAPIWrapper(serper_api_key=self.serper_api_key)
-            search_tool = Tool(
-                name="Search",
-                description="Useful for searching the internet for current information about products, prices, availability, comparisons, or any up-to-date information. Input should be a search query string.",
-                func=search.run
-            )
-            self.tools = [search_tool]
-        elif enable_web_search and not self.serper_api_key:
-            print("⚠ Web search disabled (SERPER_API_KEY not found)")
-            self.enable_web_search = False
+
+        search = GoogleSerperAPIWrapper(serper_api_key=os.getenv('SERPER_API_KEY'))
+        search_tool = Tool(
+            name="Search",
+            description="Useful for searching the internet for current information about products, prices, availability, comparisons, or any up-to-date information. Input should be a search query string.",
+            func=search.run
+        )
+        self.tools = [search_tool]
+
 
         # Load system prompt template from config file
         # LangChain's initialize_agent handles ReAct format, tools, scratchpad automatically
@@ -149,13 +111,8 @@ class ProductChatbot:
             product_data_escaped = product_data_json.replace('{', '{{').replace('}', '}}')
             agent_prefix_formatted = self.agent_prefix_template.replace('<<PRODUCT_DATA>>', product_data_escaped)
 
-            # Use initialize_agent - LangChain handles everything automatically:
-            # - ReAct format (Thought/Action/Observation)
-            # - Tool descriptions and invocation
-            # - Agent scratchpad management
-            # - Conversation memory integration
             agent = initialize_agent(
-                tools=self.tools,  # Can be empty list
+                tools=self.tools,
                 llm=self.llm,
                 agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                 memory=memory,
@@ -177,26 +134,10 @@ class ProductChatbot:
             raise Exception(f"Failed to generate answer: {str(e)}")
 
     def set_product_data(self, session_id: str, product_data: Dict):
-        """
-        Set product data for a session
-
-        Args:
-            session_id: Unique session identifier
-            product_data: Product data dictionary
-        """
         key = f"product_data:{session_id}"
         self.redis_client.set(key, json.dumps(product_data))
 
     def get_product_data(self, session_id: str) -> Optional[Dict]:
-        """
-        Get product data for a session
-
-        Args:
-            session_id: Unique session identifier
-
-        Returns:
-            Product data dictionary or None
-        """
         key = f"product_data:{session_id}"
         data = self.redis_client.get(key)
         if data:
