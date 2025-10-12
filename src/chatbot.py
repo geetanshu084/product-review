@@ -11,10 +11,11 @@ from pathlib import Path
 import redis
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.memory import ConversationBufferMemory
-from langchain.agents import initialize_agent, AgentType
+from langchain.agents import AgentExecutor, create_react_agent
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 from langchain_community.utilities import GoogleSerperAPIWrapper
 from langchain.tools import Tool
+from langchain_core.prompts import PromptTemplate
 
 
 class ProductChatbot:
@@ -58,11 +59,10 @@ class ProductChatbot:
 
 
         # Load system prompt template from config file
-        # LangChain's initialize_agent handles ReAct format, tools, scratchpad automatically
         prompt_path = Path(__file__).parent.parent / "config" / "prompts" / "agent_prompt.txt"
         try:
             with open(prompt_path, 'r', encoding='utf-8') as f:
-                self.agent_prefix_template = f.read()
+                self.system_prompt_template = f.read()
         except FileNotFoundError:
             raise FileNotFoundError(
                 f"Agent prompt file not found at {prompt_path}. "
@@ -91,11 +91,9 @@ class ProductChatbot:
         # Convert product data to JSON string for LLM context
         product_data_json = json.dumps(product_data, indent=2, ensure_ascii=False)
 
-        # Generate answer using LangChain's initialize_agent
-        # This handles ReAct format, tools, and scratchpad automatically
+        # Generate answer using modern LangChain agent
         try:
             # Create session-specific memory with RedisChatMessageHistory
-            # LangChain manages the conversation history automatically
             memory = ConversationBufferMemory(
                 chat_memory=RedisChatMessageHistory(
                     session_id=session_id,
@@ -103,43 +101,61 @@ class ProductChatbot:
                     key_prefix="chat_history:"
                 ),
                 memory_key="chat_history",
-                return_messages=True
+                return_messages=False,  # Return as string for ReAct agent
+                output_key="output"
             )
 
-            # Insert product data JSON into agent prefix using string replacement
+            # Insert product data JSON into system prompt
             # Escape JSON curly braces for PromptTemplate by doubling them: { becomes {{
             product_data_escaped = product_data_json.replace('{', '{{').replace('}', '}}')
-            agent_prefix_formatted = self.agent_prefix_template.replace('<<PRODUCT_DATA>>', product_data_escaped)
+            prompt_with_product = PromptTemplate.from_template(
+                self.system_prompt_template.replace('<<PRODUCT_DATA>>', product_data_escaped) + """
 
-            # Custom parsing error handler
-            def handle_parsing_error(error) -> str:
-                """Handle parsing errors by returning the LLM output as-is"""
-                response = str(error).split("Could not parse LLM output: `")[-1].rsplit("`", 1)[0]
-                # If the response looks like it has content after "Thought:", extract it
-                if "Thought:" in response and "Final Answer:" not in response:
-                    # LLM likely gave a direct answer after Thought without proper format
-                    # Extract everything after "Thought:" as the answer
-                    parts = response.split("Thought:", 1)
-                    if len(parts) > 1:
-                        return parts[1].strip()
-                return response
+You have access to the following tools:
 
-            agent = initialize_agent(
-                tools=self.tools,
-                llm=self.llm,
-                agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-                memory=memory,
-                verbose=True,
-                handle_parsing_errors=handle_parsing_error,
-                max_iterations=3,
-                agent_kwargs={
-                    "prefix": agent_prefix_formatted
-                }
+{tools}
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Begin!
+
+Chat History:
+{chat_history}
+
+Question: {input}
+Thought:{agent_scratchpad}"""
             )
 
-            # Invoke agent - LangChain handles all the complexity
-            response = agent.invoke({"input": question})
-            answer = response.get('output', '').strip()
+            # Create the modern ReAct agent
+            agent = create_react_agent(
+                llm=self.llm,
+                tools=self.tools,
+                prompt=prompt_with_product
+            )
+
+            # Create agent executor with memory
+            agent_executor = AgentExecutor(
+                agent=agent,
+                tools=self.tools,
+                memory=memory,
+                verbose=True,
+                handle_parsing_errors=True,
+                max_iterations=3,
+                return_intermediate_steps=False
+            )
+
+            # Invoke agent
+            result = agent_executor.invoke({"input": question})
+            answer = result.get('output', '').strip()
 
             return answer
 
