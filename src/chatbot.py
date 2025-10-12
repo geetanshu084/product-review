@@ -111,13 +111,26 @@ class ProductChatbot:
             product_data_escaped = product_data_json.replace('{', '{{').replace('}', '}}')
             agent_prefix_formatted = self.agent_prefix_template.replace('<<PRODUCT_DATA>>', product_data_escaped)
 
+            # Custom parsing error handler
+            def handle_parsing_error(error) -> str:
+                """Handle parsing errors by returning the LLM output as-is"""
+                response = str(error).split("Could not parse LLM output: `")[-1].rsplit("`", 1)[0]
+                # If the response looks like it has content after "Thought:", extract it
+                if "Thought:" in response and "Final Answer:" not in response:
+                    # LLM likely gave a direct answer after Thought without proper format
+                    # Extract everything after "Thought:" as the answer
+                    parts = response.split("Thought:", 1)
+                    if len(parts) > 1:
+                        return parts[1].strip()
+                return response
+
             agent = initialize_agent(
                 tools=self.tools,
                 llm=self.llm,
                 agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                 memory=memory,
                 verbose=True,
-                handle_parsing_errors=True,
+                handle_parsing_errors=handle_parsing_error,
                 max_iterations=3,
                 agent_kwargs={
                     "prefix": agent_prefix_formatted
