@@ -18,11 +18,9 @@ from langchain_community.chat_message_histories import RedisChatMessageHistory
 
 
 class ProductChatbot:
-    """Conversational Q&A system for product inquiries"""
 
     def __init__(
         self,
-        credentials_path: Optional[str] = None,
         redis_host: str = "localhost",
         redis_port: int = 6379,
         redis_db: int = 0,
@@ -47,9 +45,9 @@ class ProductChatbot:
             enable_web_search: Enable web search capability (default: True)
         """
         # Check for API key first (recommended approach)
-        api_key = google_api_key or os.getenv('GOOGLE_API_KEY')
+        # api_key = os.getenv('GOOGLE_API_KEY')
 
-        if not api_key:
+        if not os.getenv('GOOGLE_API_KEY'):
             raise ValueError(
                 "Google API key is required. Please either:\n"
                 "1. Set GOOGLE_API_KEY environment variable in your .env file, or\n"
@@ -61,7 +59,7 @@ class ProductChatbot:
             model=model_name,
             temperature=0.5,
             convert_system_message_to_human=True,
-            google_api_key=api_key
+            google_api_key=os.getenv('GOOGLE_API_KEY')
         )
 
         # Store Redis connection details for creating session-specific message histories
@@ -99,10 +97,9 @@ class ProductChatbot:
             print("⚠ Web search disabled (SERPER_API_KEY not found)")
             self.enable_web_search = False
 
-        # Create agent with tools if enabled
-        if self.tools:
-            # Simplified system prompt - LangChain handles ReAct format automatically
-            self.system_prefix = """You are a helpful product analysis assistant. Answer questions about products based on the provided product data.
+        # Single system prompt - works with or without tools
+        # Build template using string concatenation to avoid .format() issues
+        system_prompt_start = """You are a helpful product analysis assistant. Answer questions about products based on the provided product data.
 
 PRODUCT DATA:
 {product_context}
@@ -114,78 +111,54 @@ Guidelines:
 4. If information is in the product data, DO NOT use web_search - answer directly
 5. Be specific and quote from reviews when relevant
 6. When recommending where to buy, mention the platform, price, and any savings
-7. Keep answers concise but informative"""
+7. Keep answers concise but informative
+"""
 
-            # Create ReAct prompt template (LangChain standard format)
-            # This follows the ReAct format that create_react_agent expects
-            full_template = f"""{self.system_prefix}
-
+        # Tool section - only include if tools are available
+        tool_section = """
 TOOLS:
 ------
 You have access to the following tools:
 
-{{tools}}
+{tools}
 
-To use a tool, please use the following format:
-
+To use a tool, use this format:
 ```
 Thought: Do I need to use a tool? Yes
-Action: the action to take, should be one of [{{tool_names}}]
+Action: the action to take, should be one of [{tool_names}]
 Action Input: the input to the action
 Observation: the result of the action
 ```
 
-When you have a response to say to the Human, or if you do not need to use a tool, you MUST use the format:
-
+When you have a response, or if you do not need to use a tool:
 ```
 Thought: Do I need to use a tool? No
 Final Answer: [your response here]
 ```
+""" if self.tools else ""
 
+        system_prompt_end = """
 Begin!
 
-New input: {{input}}
-Thought:{{agent_scratchpad}}"""
+Question: {input}
+{agent_scratchpad}"""
 
-            self.agent_prompt = PromptTemplate(
-                input_variables=["tools", "tool_names", "input", "agent_scratchpad", "product_context"],
-                template=full_template
-            )
+        # Build full template using string concatenation
+        full_template = system_prompt_start + tool_section + system_prompt_end
 
-            # Create agent - it will automatically handle agent_scratchpad
-            self.agent = create_react_agent(self.llm, self.tools, self.agent_prompt)
-
-            # Note: We don't add memory here because we need session-specific memory
-            # Memory will be created per-session in the ask() method
-            self.agent_executor = None  # Will be created with session memory
-
+        # Define input variables based on whether tools are present
+        if self.tools:
+            input_vars = ["product_context", "input", "agent_scratchpad", "tools", "tool_names"]
         else:
-            # No tools - simple prompt-based Q&A
-            self.qa_template = """You are a helpful product analysis assistant. You answer questions about products based on the product data provided.
+            input_vars = ["product_context", "input", "agent_scratchpad"]
 
-PRODUCT DATA:
-{product_context}
+        self.agent_prompt = PromptTemplate(
+            input_variables=input_vars,
+            template=full_template
+        )
 
-CONVERSATION HISTORY:
-{history}
-
-USER QUESTION: {input}
-
-Guidelines:
-1. First check the PRODUCT DATA for the answer
-2. PRICE COMPARISON data shows prices across different platforms (Amazon, Flipkart, eBay, etc.) - use this to answer questions about where to buy, price differences, best deals, and savings
-3. If the information is not available, clearly state what information is missing
-4. Be specific and quote from reviews when relevant
-5. When recommending where to buy, mention the platform, price, and any savings
-6. Keep answers concise but informative
-7. Maintain a helpful and professional tone
-
-YOUR ANSWER:"""
-
-            self.prompt = PromptTemplate(
-                input_variables=["product_context", "history", "input"],
-                template=self.qa_template
-            )
+        # Create agent - works with or without tools (empty list is fine)
+        self.agent = create_react_agent(self.llm, self.tools, self.agent_prompt)
 
     def format_product_context(self, product_data: Dict) -> str:
         """
@@ -323,27 +296,6 @@ YOUR ANSWER:"""
 
         return "\n".join(context)
 
-    def format_history(self, messages) -> str:
-        """
-        Format conversation history from LangChain messages
-
-        Args:
-            messages: List of LangChain BaseMessage objects
-
-        Returns:
-            Formatted history string
-        """
-        if not messages:
-            return "No previous conversation"
-
-        history = []
-        for msg in messages[-6:]:  # Last 6 messages (3 exchanges)
-            # LangChain messages have .type attribute
-            role = "User" if msg.type == "human" else "Assistant"
-            history.append(f"{role}: {msg.content}")
-
-        return "\n".join(history)
-
     def _web_search_tool(self, query: str) -> str:
         """
         Perform web search using Serper API (LangChain tool)
@@ -354,7 +306,7 @@ YOUR ANSWER:"""
         Returns:
             Formatted search results string
         """
-        if not self.serper_api_key:
+        if not os.getenv('SERPER_API_KEY'):
             return "Web search unavailable (API key not configured)"
 
         try:
@@ -370,7 +322,7 @@ YOUR ANSWER:"""
             }
 
             headers = {
-                "X-API-KEY": self.serper_api_key,
+                "X-API-KEY": os.getenv('SERPER_API_KEY'),
                 "Content-Type": "application/json"
             }
 
@@ -449,55 +401,38 @@ YOUR ANSWER:"""
         self._current_product_context = product_context
         self._current_product_title = product_data.get('title', '')
 
-        # Generate answer
+        # Generate answer using unified agent approach
         try:
-            if self.tools:
-                # Create session-specific memory with RedisChatMessageHistory
-                message_history = self._get_message_history(session_id)
-                memory = ConversationBufferMemory(
-                    chat_memory=message_history,
-                    memory_key="chat_history",
-                    input_key="input",  # Specify which key is the main input
-                    return_messages=True
-                )
+            # Create session-specific memory with RedisChatMessageHistory
+            message_history = self._get_message_history(session_id)
+            memory = ConversationBufferMemory(
+                chat_memory=message_history,
+                memory_key="chat_history",
+                input_key="input",  # Specify which key is the main input
+                return_messages=True
+            )
 
-                # Create AgentExecutor with memory (LangChain handles history automatically)
-                from langchain.agents import AgentExecutor
-                agent_executor = AgentExecutor(
-                    agent=self.agent,
-                    tools=self.tools,
-                    memory=memory,
-                    verbose=True,
-                    handle_parsing_errors=True,
-                    max_iterations=3
-                )
+            # Create AgentExecutor with memory (works with or without tools)
+            # LangChain handles everything automatically
+            agent_executor = AgentExecutor(
+                agent=self.agent,
+                tools=self.tools,  # Can be empty list - LangChain handles it
+                memory=memory,
+                verbose=True,
+                handle_parsing_errors=True,
+                max_iterations=3
+            )
 
-                # Invoke - LangChain automatically handles:
-                # - conversation history (from memory)
-                # - agent_scratchpad (intermediate steps)
-                # - ReAct format (thought/action/observation loop)
-                response = agent_executor.invoke({
-                    "product_context": product_context,
-                    "input": question
-                })
-                answer = response.get('output', '').strip()
-            else:
-                # No tools - direct prompt with manual history handling
-                message_history = self._get_message_history(session_id)
-                messages = message_history.messages
-                history = self.format_history(messages)
-
-                full_prompt = self.prompt.format(
-                    product_context=product_context,
-                    history=history,
-                    input=question
-                )
-                response = self.llm.invoke(full_prompt)
-                answer = response.content.strip()
-
-                # Save manually for non-agent mode
-                message_history.add_user_message(question)
-                message_history.add_ai_message(answer)
+            # Invoke - LangChain automatically handles:
+            # - conversation history (from memory)
+            # - agent_scratchpad (intermediate steps)
+            # - ReAct format (thought/action/observation loop)
+            # - Tool execution (if tools available)
+            response = agent_executor.invoke({
+                "product_context": product_context,
+                "input": question
+            })
+            answer = response.get('output', '').strip()
 
             return answer
 
