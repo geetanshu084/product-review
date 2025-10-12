@@ -7,6 +7,7 @@ Includes web search capability via LangChain tools
 import json
 import os
 from typing import Dict, List, Optional
+from pathlib import Path
 import redis
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.memory import ConversationBufferMemory
@@ -94,23 +95,17 @@ class ProductChatbot:
             print("⚠ Web search disabled (SERPER_API_KEY not found)")
             self.enable_web_search = False
 
-        # System prefix template for agent - just high-level instructions
+        # Load system prompt template from config file
         # LangChain's initialize_agent handles ReAct format, tools, scratchpad automatically
-        # Note: Product data will be inserted via string replacement (not .format())
-        self.agent_prefix_template = """You are a helpful product analysis assistant. Answer questions about products based on the provided product data.
-
-Guidelines:
-1. First check the PRODUCT DATA (JSON format) for the answer
-2. The product data includes: title, brand, price, rating, features, reviews, specifications, warranty, bank_offers, etc.
-3. If there's a 'price_comparison' field, it shows prices across different platforms (Amazon, Flipkart, eBay, etc.) - use this to answer questions about where to buy, price differences, best deals, and savings
-4. Use the web_search tool ONLY when you need current/updated information that's not in the product data (like current market prices, latest comparisons, real-time availability)
-5. If information is in the product data, DO NOT use web_search - answer directly
-6. Be specific and quote from reviews when relevant
-7. When recommending where to buy, mention the platform, price, and any savings
-8. Keep answers concise but informative
-
-PRODUCT DATA (JSON):
-<<PRODUCT_DATA>>"""
+        prompt_path = Path(__file__).parent.parent / "config" / "prompts" / "agent_prompt.txt"
+        try:
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                self.agent_prefix_template = f.read()
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Agent prompt file not found at {prompt_path}. "
+                "Please ensure config/prompts/agent_prompt.txt exists."
+            )
 
     def _get_message_history(self, session_id: str) -> RedisChatMessageHistory:
         """
