@@ -4,6 +4,7 @@ Streamlit Web Interface for Amazon Product Analysis Agent
 
 import os
 import uuid
+import re
 from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
@@ -23,6 +24,80 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+
+def extract_urls_from_text(text):
+    """Extract URLs from text and return them with context"""
+    # Pattern to match URLs
+    url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
+    urls = re.findall(url_pattern, text)
+    return urls
+
+
+def detect_ecommerce_site(url):
+    """Detect which e-commerce site the URL belongs to"""
+    url_lower = url.lower()
+
+    if 'amazon' in url_lower:
+        return 'Amazon', '🛒'
+    elif 'flipkart' in url_lower:
+        return 'Flipkart', '🛍️'
+    elif 'ebay' in url_lower:
+        return 'eBay', '🏪'
+    elif 'walmart' in url_lower:
+        return 'Walmart', '🏬'
+    elif 'aliexpress' in url_lower:
+        return 'AliExpress', '🌐'
+    elif 'myntra' in url_lower:
+        return 'Myntra', '👗'
+    elif 'ajio' in url_lower:
+        return 'Ajio', '👔'
+    elif 'snapdeal' in url_lower:
+        return 'Snapdeal', '🛒'
+    else:
+        return 'External Link', '🔗'
+
+
+def format_message_with_links(message_text):
+    """Format message text to display URLs as clickable cards"""
+    urls = extract_urls_from_text(message_text)
+
+    # Display the main message text
+    # Replace URLs with placeholder text for cleaner display
+    display_text = message_text
+    for url in urls:
+        display_text = display_text.replace(url, f"[Link]({url})")
+
+    st.markdown(display_text)
+
+    # Display URL cards if any URLs found
+    if urls:
+        st.markdown("---")
+        st.markdown("**🔗 Referenced Links:**")
+
+        for i, url in enumerate(urls, 1):
+            site_name, icon = detect_ecommerce_site(url)
+
+            with st.container():
+                col1, col2 = st.columns([4, 1])
+
+                with col1:
+                    st.markdown(f"**{icon} {site_name}**")
+                    # Truncate long URLs for display
+                    display_url = url if len(url) <= 60 else url[:57] + "..."
+                    st.caption(display_url)
+
+                with col2:
+                    # Create link that opens in new tab
+                    st.markdown(
+                        f'<a href="{url}" target="_blank" rel="noopener noreferrer">'
+                        f'<button style="background-color:#FF4B4B;color:white;border:none;'
+                        f'padding:8px 16px;border-radius:4px;cursor:pointer;width:100%;">'
+                        f'Visit →</button></a>',
+                        unsafe_allow_html=True
+                    )
+
+                st.markdown("---")
 
 
 def initialize_session_state():
@@ -334,7 +409,8 @@ def qa_tab():
                     st.write(msg['content'])
             else:
                 with st.chat_message("assistant"):
-                    st.write(msg['content'])
+                    # Use enhanced formatting for assistant messages
+                    format_message_with_links(msg['content'])
     else:
         st.info("💭 No conversation yet. Ask a question to get started!")
 
