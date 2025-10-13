@@ -433,7 +433,22 @@ def reviews_tab():
             # Filter reviews
             filtered_reviews = amazon_reviews
             if rating_filter > 1:
-                filtered_reviews = [r for r in filtered_reviews if float(r.get('rating', '0').split()[0]) >= rating_filter]
+                def get_rating_value(review):
+                    """Extract numeric rating from review"""
+                    try:
+                        rating_str = review.get('rating', '0')
+                        if isinstance(rating_str, str):
+                            rating_parts = rating_str.split()
+                            if rating_parts:
+                                return float(rating_parts[0])
+                        elif isinstance(rating_str, (int, float)):
+                            return float(rating_str)
+                    except (ValueError, IndexError):
+                        pass
+                    return 0
+
+                filtered_reviews = [r for r in filtered_reviews if get_rating_value(r) >= rating_filter]
+
             if verified_only:
                 filtered_reviews = [r for r in filtered_reviews if r.get('verified', False)]
 
@@ -623,7 +638,26 @@ def reviews_tab():
 
             with col1:
                 st.markdown("**Amazon Reviews:**")
-                avg_rating = sum(float(r.get('rating', '0').split()[0]) for r in amazon_reviews) / len(amazon_reviews) if amazon_reviews else 0
+                # Calculate average rating safely
+                try:
+                    ratings = []
+                    for r in amazon_reviews:
+                        rating_str = r.get('rating', '0')
+                        if isinstance(rating_str, str):
+                            # Extract first number from string (e.g., "5.0 out of 5 stars" -> 5.0)
+                            rating_parts = rating_str.split()
+                            if rating_parts:
+                                try:
+                                    ratings.append(float(rating_parts[0]))
+                                except ValueError:
+                                    pass
+                        elif isinstance(rating_str, (int, float)):
+                            ratings.append(float(rating_str))
+
+                    avg_rating = sum(ratings) / len(ratings) if ratings else 0
+                except Exception:
+                    avg_rating = 0
+
                 st.metric("Average Rating", f"{avg_rating:.1f}⭐")
                 verified_count = sum(1 for r in amazon_reviews if r.get('verified', False))
                 st.metric("Verified Purchases", f"{verified_count}/{len(amazon_reviews)}")
