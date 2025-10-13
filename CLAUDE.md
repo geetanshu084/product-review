@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Things to take care while writing cor
+    - Don't create document for all changes if specifically asked for,
+    - Use langchain framework in full whehe all we can use.
+    - Do less documenting in code.
 ## Project Overview
 
 This is an AI-powered Amazon product analysis agent that scrapes product data from Amazon, analyzes it using Google Gemini LLM via LangChain, and provides conversational Q&A with Redis-backed persistent memory. The application uses Streamlit for the web interface.

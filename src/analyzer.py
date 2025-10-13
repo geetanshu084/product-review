@@ -10,6 +10,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from src.price_comparison import SerperPriceComparison
+from src.analysis.web_search import WebSearchAnalyzer
 
 
 class ProductAnalyzer:
@@ -21,7 +22,8 @@ class ProductAnalyzer:
         model_name: str = "gemini-2.0-flash-exp",
         google_api_key: Optional[str] = None,
         serper_api_key: Optional[str] = None,
-        enable_price_comparison: bool = True
+        enable_price_comparison: bool = True,
+        enable_web_search: bool = True
     ):
         """
         Initialize the product analyzer
@@ -30,8 +32,9 @@ class ProductAnalyzer:
             credentials_path: Path to GCP service account JSON file (deprecated - use google_api_key instead)
             model_name: Name of the Gemini model to use
             google_api_key: Google API key for Gemini (recommended)
-            serper_api_key: Serper API key for price comparison (optional)
+            serper_api_key: Serper API key for price comparison and web search (optional)
             enable_price_comparison: Whether to enable price comparison feature
+            enable_web_search: Whether to enable external web search for reviews
         """
         # Check for API key first (recommended approach)
         api_key = google_api_key or os.getenv('GOOGLE_API_KEY')
@@ -43,6 +46,9 @@ class ProductAnalyzer:
                 "2. Pass google_api_key parameter\n\n"
                 "Get your API key from: https://makersuite.google.com/app/apikey"
             )
+
+        # Store API key for web search
+        self.api_key = api_key
 
         # Initialize price comparison if enabled
         self.enable_price_comparison = enable_price_comparison
@@ -59,6 +65,22 @@ class ProductAnalyzer:
                     self.price_comparer = None
             else:
                 print("⚠ SERPER_API_KEY not found - price comparison disabled")
+
+        # Initialize web search analyzer if enabled
+        self.enable_web_search = enable_web_search
+        self.web_search_analyzer = None
+
+        if enable_web_search:
+            serper_key = serper_api_key or os.getenv('SERPER_API_KEY')
+            if serper_key:
+                try:
+                    self.web_search_analyzer = WebSearchAnalyzer(serper_key, api_key)
+                    print("✓ Web search analysis enabled")
+                except Exception as e:
+                    print(f"⚠ Web search disabled: {str(e)}")
+                    self.web_search_analyzer = None
+            else:
+                print("⚠ SERPER_API_KEY not found - web search disabled")
 
         self.llm = ChatGoogleGenerativeAI(
             model=model_name,
@@ -103,6 +125,25 @@ class ProductAnalyzer:
             return self.price_comparer.compare_prices(product_title)
         except Exception as e:
             print(f"⚠ Price comparison failed: {str(e)}")
+            return None
+
+    def get_web_search_analysis(self, product_title: str) -> Optional[Dict]:
+        """
+        Get external web search analysis for the product
+
+        Args:
+            product_title: Product title to search for
+
+        Returns:
+            Web search analysis dictionary or None
+        """
+        if not self.web_search_analyzer:
+            return None
+
+        try:
+            return self.web_search_analyzer.analyze_product(product_title)
+        except Exception as e:
+            print(f"⚠ Web search analysis failed: {str(e)}")
             return None
 
     def format_product_data(self, product_data: Dict, price_comparison: Optional[Dict] = None) -> str:
@@ -257,13 +298,14 @@ class ProductAnalyzer:
 
         return "\n".join(formatted)
 
-    def analyze_product(self, product_data: Dict, include_price_comparison: bool = True) -> str:
+    def analyze_product(self, product_data: Dict, include_price_comparison: bool = True, include_web_search: bool = True) -> str:
         """
         Analyze product data using Gemini LLM
 
         Args:
             product_data: Dictionary containing scraped product data
             include_price_comparison: Whether to include price comparison in analysis
+            include_web_search: Whether to include external web search analysis
 
         Returns:
             Markdown-formatted analysis string
@@ -272,15 +314,23 @@ class ProductAnalyzer:
             Exception: If LLM analysis fails
         """
         try:
+            product_title = product_data.get('title', '')
+
             # Get price comparison if enabled
             price_comparison = None
-            if include_price_comparison and self.price_comparer:
-                product_title = product_data.get('title', '')
-                if product_title:
-                    print("\n🔍 Fetching price comparison data...")
-                    price_comparison = self.get_price_comparison(product_title)
-                    # Store in product_data for later use
-                    product_data['price_comparison'] = price_comparison
+            if include_price_comparison and self.price_comparer and product_title:
+                print("\n🔍 Fetching price comparison data...")
+                price_comparison = self.get_price_comparison(product_title)
+                # Store in product_data for later use
+                product_data['price_comparison'] = price_comparison
+
+            # Get web search analysis if enabled (after price comparison as per requirements)
+            web_search_data = None
+            if include_web_search and self.web_search_analyzer and product_title:
+                print("\n🌐 Analyzing external reviews and mentions...")
+                web_search_data = self.get_web_search_analysis(product_title)
+                # Store in product_data for later use
+                product_data['web_search_analysis'] = web_search_data
 
             # Format product data
             formatted_data = self.format_product_data(product_data, price_comparison)

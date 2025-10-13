@@ -9,6 +9,7 @@ import os
 from typing import Dict, Optional
 from pathlib import Path
 import redis
+from langchain.memory import ConversationBufferMemory
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.chat_message_histories import RedisChatMessageHistory
@@ -56,8 +57,6 @@ class ProductChatbot:
         )
         self.tools = [search_tool]
 
-
-        # Load system prompt template from config file
         prompt_path = Path(__file__).parent.parent / "config" / "prompts" / "agent_prompt.txt"
         try:
             with open(prompt_path, 'r', encoding='utf-8') as f:
@@ -84,42 +83,32 @@ class ProductChatbot:
         product_data = self.get_product_data(product_id)
         if not product_data:
             raise ValueError("Please analyze a product first before asking questions.")
-
-        # Convert product data to JSON string for LLM context
         product_data_json = json.dumps(product_data, indent=2, ensure_ascii=False)
 
         # Generate answer using modern LangChain agent
         try:
-            # Create session-specific memory with RedisChatMessageHistory
-            # memory = ConversationBufferMemory(
-            #     chat_memory=RedisChatMessageHistory(
-            #         session_id=session_id,
-            #         url=self.redis_url,
-            #         key_prefix="chat_history:"
-            #     ),
-            #     memory_key="chat_history",
-            #     return_messages=False,  # Return as string for ReAct agent
-            #     output_key="output"
-            # )
-            memory = RedisChatMessageHistory(
+            chat_histroy = RedisChatMessageHistory(
                 session_id=session_id,
                 url=self.redis_url,
-                key_prefix="chat_history:"
             )
-            # Insert product data JSON into system prompt
-            # Escape JSON curly braces for PromptTemplate by doubling them: { becomes {{
+            memory = ConversationBufferMemory(
+                memory_key="chat_history",  # must match your prompt's variable name
+                chat_memory=chat_histroy,
+                return_messages=True  # recommended for agent chat
+            )
+
             product_data_escaped = product_data_json.replace('{', '{{').replace('}', '}}')
 
             prompt = ChatPromptTemplate.from_messages([
                 ("system", self.system_prompt_template.replace('<<PRODUCT_DATA>>', product_data_escaped)),
+                MessagesPlaceholder(variable_name="chat_history"),
                 ("human", "{input}"),
                 MessagesPlaceholder(variable_name="agent_scratchpad"),
+
             ])
 
             agent = create_tool_calling_agent(self.llm, self.tools, prompt)
-            # agent_executor = AgentExecutor(agent, self.tools, memory=memory)
-            #
-            # Create agent executor with memory
+
             agent_executor = AgentExecutor(
                 agent=agent,
                 tools=self.tools,
@@ -139,16 +128,6 @@ class ProductChatbot:
             raise Exception(f"Failed to generate answer: {str(e)}")
 
     def get_product_data(self, product_id: str) -> Optional[Dict]:
-        """
-        Get product data from Redis (set by scraper after scraping)
-
-        Args:
-            product_id: Product identifier (ASIN from scraper)
-
-        Returns:
-            Product data dictionary or None
-        """
-        # Use same key format as scraper: "product:{asin}"
         key = f"product:{product_id}"
         data = self.redis_client.get(key)
         if data:

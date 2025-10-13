@@ -189,6 +189,13 @@ def product_analysis_tab():
             try:
                 analysis = st.session_state.analyzer.analyze_product(product_data)
                 st.session_state.analysis_result = analysis
+
+                # Save updated product_data (with price_comparison and web_search_analysis) to Redis
+                asin = product_data.get('asin')
+                if asin:
+                    st.session_state.scraper._save_to_cache(asin, product_data)
+                    print(f"✓ Updated product data saved to Redis for ASIN: {asin}")
+
             except Exception as e:
                 st.error(f"❌ LLM analysis failed: {str(e)}")
                 return

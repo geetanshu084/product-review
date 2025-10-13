@@ -1,9 +1,11 @@
 beautifulsoup4==4.12.3
-requests==2.31.0
+requests==2.32.5
 streamlit==1.31.1
-langchain==0.1.6
-langchain-google-genai==0.0.9
-langchain-community==0.0.20
+langchain==0.3.27
+langchain-google-genai==2.1.12
+langchain-community==0.3.31
+langchain-core==0.3.79
+langchain-text-splitters==0.3.11
 python-dotenv==1.0.1
 redis==5.0.1
 lxml==5.1.0
