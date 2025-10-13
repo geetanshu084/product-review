@@ -81,11 +81,17 @@ def show_sidebar():
         st.markdown("""
         ### How to use:
         1. **Analyze Tab**: Paste an Amazon product URL and click "Analyze Product"
-        2. **Q&A Tab**: Ask questions about the analyzed product
+        2. **Reviews Tab**: View Amazon reviews and external sources
+        3. **Q&A Tab**: Ask questions about the analyzed product
 
         ### Features:
         - Comprehensive product analysis
         - **Multi-platform price comparison**
+        - **External reviews from web sources**
+        - Amazon customer reviews with filters
+        - Comparison articles and video reviews
+        - Reddit discussions and issue reports
+        - Key findings and red flag detection
         - Bank offers extraction
         - Product specifications
         - Pros and cons from customer reviews
@@ -97,7 +103,7 @@ def show_sidebar():
         ### Requirements:
         - Valid Amazon product URL
         - GOOGLE_API_KEY in .env
-        - SERPER_API_KEY in .env (optional, for price comparison)
+        - SERPER_API_KEY in .env (optional, for price comparison & web search)
         - Redis server running
         """)
 
@@ -377,6 +383,257 @@ def qa_tab():
         st.rerun()
 
 
+def reviews_tab():
+    """Reviews tab content - shows Amazon and external reviews"""
+    st.header("📝 Reviews & External Sources")
+
+    # Check if product data is available
+    if not st.session_state.product_data:
+        st.info("ℹ️ Please analyze a product first to see reviews.")
+        st.markdown("Go to the **Product Analysis** tab to analyze a product.")
+        return
+
+    # Display product info
+    st.markdown(f"**Product:** {st.session_state.product_data.get('title', 'N/A')}")
+    st.markdown("---")
+
+    # Get data
+    amazon_reviews = st.session_state.product_data.get('reviews', [])
+    web_search_data = st.session_state.product_data.get('web_search_analysis', {})
+
+    # Create sub-tabs
+    review_tab1, review_tab2, review_tab3, review_tab4 = st.tabs([
+        f"🛒 Amazon Reviews ({len(amazon_reviews)})",
+        f"🌐 External Reviews ({len(web_search_data.get('external_reviews', []))})",
+        f"🔍 Comparisons ({len(web_search_data.get('comparison_articles', []))})",
+        f"📊 Summary"
+    ])
+
+    # Amazon Reviews Tab
+    with review_tab1:
+        st.subheader("Amazon Customer Reviews")
+
+        if not amazon_reviews:
+            st.info("No Amazon reviews were scraped for this product.")
+        else:
+            # Rating filter
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                rating_filter = st.select_slider(
+                    "Filter by minimum rating",
+                    options=[1, 2, 3, 4, 5],
+                    value=1,
+                    key="amazon_rating_filter"
+                )
+            with col2:
+                verified_only = st.checkbox("Verified purchases only", value=False, key="verified_filter")
+
+            st.markdown("---")
+
+            # Filter reviews
+            filtered_reviews = amazon_reviews
+            if rating_filter > 1:
+                filtered_reviews = [r for r in filtered_reviews if float(r.get('rating', '0').split()[0]) >= rating_filter]
+            if verified_only:
+                filtered_reviews = [r for r in filtered_reviews if r.get('verified', False)]
+
+            st.write(f"Showing **{len(filtered_reviews)}** of **{len(amazon_reviews)}** reviews")
+
+            # Display reviews
+            for i, review in enumerate(filtered_reviews, 1):
+                with st.expander(f"⭐ {review.get('rating', 'N/A')} - {review.get('title', 'No title')}", expanded=(i == 1)):
+                    col1, col2 = st.columns([3, 1])
+
+                    with col1:
+                        st.markdown(f"**Author:** {review.get('author', 'Anonymous')}")
+                        st.markdown(f"**Date:** {review.get('date', 'N/A')}")
+                        if review.get('verified'):
+                            st.markdown("✅ **Verified Purchase**")
+
+                    with col2:
+                        rating_val = review.get('rating', 'N/A')
+                        st.metric("Rating", rating_val)
+
+                    st.markdown("---")
+                    st.markdown(f"**Review:**")
+                    st.write(review.get('text', 'No review text available'))
+
+    # External Reviews Tab
+    with review_tab2:
+        st.subheader("External Reviews & Mentions")
+
+        external_reviews = web_search_data.get('external_reviews', [])
+
+        if not external_reviews:
+            st.info("No external reviews found. Web search may be disabled or no results were available.")
+        else:
+            st.write(f"Found **{len(external_reviews)}** external sources")
+            st.markdown("---")
+
+            for i, review in enumerate(external_reviews, 1):
+                with st.container():
+                    col1, col2 = st.columns([4, 1])
+
+                    with col1:
+                        st.markdown(f"### {i}. {review.get('title', 'No title')}")
+                        st.caption(f"🌐 **Source:** {review.get('source', 'Unknown')} | 📅 {review.get('date', 'N/A')}")
+
+                    with col2:
+                        if review.get('url'):
+                            st.link_button("View Source", review['url'], use_container_width=True)
+
+                    st.markdown(f"**Snippet:**")
+                    st.write(review.get('snippet', 'No snippet available'))
+
+                    st.markdown("---")
+
+        # Issue discussions
+        issue_discussions = web_search_data.get('issue_discussions', [])
+        if issue_discussions:
+            st.subheader("⚠️ Issue Discussions")
+            st.write(f"Found **{len(issue_discussions)}** discussions about issues")
+
+            for i, issue in enumerate(issue_discussions[:5], 1):
+                with st.expander(f"{i}. {issue.get('title', 'No title')[:80]}..."):
+                    st.caption(f"🌐 {issue.get('source', 'Unknown')} | 📅 {issue.get('date', 'N/A')}")
+                    st.write(issue.get('snippet', 'No details available'))
+                    if issue.get('url'):
+                        st.markdown(f"[Read more →]({issue['url']})")
+
+        # Reddit discussions
+        reddit_discussions = web_search_data.get('reddit_discussions', [])
+        if reddit_discussions:
+            st.subheader("💬 Reddit Discussions")
+            st.write(f"Found **{len(reddit_discussions)}** Reddit threads")
+
+            for i, discussion in enumerate(reddit_discussions[:5], 1):
+                with st.expander(f"{i}. {discussion.get('title', 'No title')[:80]}..."):
+                    st.caption(f"🌐 {discussion.get('source', 'Unknown')} | 📅 {discussion.get('date', 'N/A')}")
+                    st.write(discussion.get('snippet', 'No details available'))
+                    if discussion.get('url'):
+                        st.markdown(f"[Read more →]({discussion['url']})")
+
+    # Comparisons Tab
+    with review_tab3:
+        st.subheader("Product Comparisons")
+
+        comparison_articles = web_search_data.get('comparison_articles', [])
+
+        if not comparison_articles:
+            st.info("No comparison articles found.")
+        else:
+            st.write(f"Found **{len(comparison_articles)}** comparison articles")
+            st.markdown("---")
+
+            for i, comparison in enumerate(comparison_articles, 1):
+                with st.container():
+                    col1, col2 = st.columns([4, 1])
+
+                    with col1:
+                        st.markdown(f"### {i}. {comparison.get('title', 'No title')}")
+                        st.caption(f"🌐 **Source:** {comparison.get('source', 'Unknown')} | 📅 {comparison.get('date', 'N/A')}")
+
+                    with col2:
+                        if comparison.get('url'):
+                            st.link_button("View Article", comparison['url'], use_container_width=True)
+
+                    st.markdown(f"**Snippet:**")
+                    st.write(comparison.get('snippet', 'No snippet available'))
+
+                    st.markdown("---")
+
+        # Video reviews
+        video_reviews = web_search_data.get('video_reviews', [])
+        if video_reviews:
+            st.subheader("🎥 Video Reviews")
+            st.write(f"Found **{len(video_reviews)}** video reviews")
+
+            for i, video in enumerate(video_reviews, 1):
+                col1, col2 = st.columns([3, 1])
+
+                with col1:
+                    st.markdown(f"**{i}. {video.get('title', 'No title')}**")
+                    st.caption(f"📺 {video.get('channel', 'Unknown channel')}")
+
+                with col2:
+                    if video.get('url'):
+                        st.link_button("▶️ Watch", video['url'], use_container_width=True)
+
+    # Summary Tab
+    with review_tab4:
+        st.subheader("Reviews Summary")
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Amazon Reviews", len(amazon_reviews))
+
+        with col2:
+            st.metric("External Reviews", len(web_search_data.get('external_reviews', [])))
+
+        with col3:
+            st.metric("Comparisons", len(web_search_data.get('comparison_articles', [])))
+
+        with col4:
+            st.metric("Total Sources", web_search_data.get('total_sources', 0))
+
+        st.markdown("---")
+
+        # Key findings
+        key_findings = web_search_data.get('key_findings', [])
+        if key_findings:
+            st.subheader("🔑 Key Findings from External Sources")
+            for i, finding in enumerate(key_findings, 1):
+                st.markdown(f"{i}. {finding}")
+
+            st.markdown("---")
+
+        # Red flags
+        red_flags = web_search_data.get('red_flags', [])
+        if red_flags:
+            st.subheader("⚠️ Red Flags Detected")
+            for flag in red_flags:
+                st.warning(f"⚠️ {flag}")
+
+            st.markdown("---")
+        else:
+            st.success("✅ No major red flags detected")
+            st.markdown("---")
+
+        # Sentiment
+        overall_sentiment = web_search_data.get('overall_sentiment', 'unknown')
+        st.subheader("💭 Overall External Sentiment")
+
+        if overall_sentiment == 'positive':
+            st.success(f"✅ **Positive** - External sources are generally favorable")
+        elif overall_sentiment == 'negative':
+            st.error(f"❌ **Negative** - External sources raise concerns")
+        elif overall_sentiment == 'mixed':
+            st.warning(f"⚖️ **Mixed** - External sources have varied opinions")
+        else:
+            st.info(f"❓ **Unknown** - Not enough data to determine sentiment")
+
+        st.markdown("---")
+
+        # Amazon vs External comparison
+        if amazon_reviews and web_search_data:
+            st.subheader("📊 Amazon vs External Sources")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("**Amazon Reviews:**")
+                avg_rating = sum(float(r.get('rating', '0').split()[0]) for r in amazon_reviews) / len(amazon_reviews) if amazon_reviews else 0
+                st.metric("Average Rating", f"{avg_rating:.1f}⭐")
+                verified_count = sum(1 for r in amazon_reviews if r.get('verified', False))
+                st.metric("Verified Purchases", f"{verified_count}/{len(amazon_reviews)}")
+
+            with col2:
+                st.markdown("**External Sources:**")
+                st.metric("Overall Sentiment", overall_sentiment.capitalize())
+                st.metric("Sources Analyzed", web_search_data.get('total_sources', 0))
+
+
 def main():
     """Main application"""
     initialize_session_state()
@@ -388,12 +645,15 @@ def main():
     show_sidebar()
 
     # Main tabs
-    tab1, tab2 = st.tabs(["📊 Product Analysis", "💬 Q&A Chat"])
+    tab1, tab2, tab3 = st.tabs(["📊 Product Analysis", "📝 Reviews", "💬 Q&A Chat"])
 
     with tab1:
         product_analysis_tab()
 
     with tab2:
+        reviews_tab()
+
+    with tab3:
         qa_tab()
 
 
