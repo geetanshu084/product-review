@@ -330,57 +330,45 @@ def qa_tab():
     else:
         st.info("💭 No conversation yet. Ask a question to get started!")
 
-    # Question input
+    # Question input - using chat_input which auto-clears
     st.markdown("---")
 
-    col1, col2 = st.columns([5, 1])
-
-    with col1:
-        question = st.text_input(
-            "Your question",
-            placeholder="e.g., What are the main complaints about this product?",
-            label_visibility="collapsed",
-            key="question_input"
-        )
-
-    with col2:
-        send_button = st.button("Send", type="primary", use_container_width=True)
-        clear_button = st.button("Clear Chat", use_container_width=True)
-
-    if send_button and question:
-        with st.spinner("🤔 Thinking..."):
-            try:
-                # Get ASIN from product data
-                asin = st.session_state.product_data.get('asin')
-                if not asin:
-                    st.error("❌ Product ASIN not found. Please re-analyze the product.")
-                    return
-
-                # Call chatbot with session_id, product_id (asin), and question
-                answer = st.session_state.chatbot.ask(st.session_state.session_id, asin, question)
-
-                # Add to session chat history
-                st.session_state.chat_history.append({'role': 'user', 'content': question})
-                st.session_state.chat_history.append({'role': 'assistant', 'content': answer})
-
-                # Display new Q&A
-                with st.chat_message("user"):
-                    st.write(question)
-
-                with st.chat_message("assistant"):
-                    st.write(answer)
-
-                # Clear input by rerunning
-                st.rerun()
-
-            except Exception as e:
-                st.error(f"❌ Failed to generate answer: {str(e)}")
-
-    if clear_button:
-        # Clear chat history from session state
+    # Clear chat button
+    if st.button("🗑️ Clear Chat", use_container_width=False):
         st.session_state.chat_history = []
         st.success("✅ Conversation cleared!")
         st.rerun()
+
+    # Chat input (automatically clears after submission)
+    question = st.chat_input("Ask a question about this product...", key="chat_input")
+
+    if question:
+        # Get ASIN from product data
+        asin = st.session_state.product_data.get('asin')
+        if not asin:
+            st.error("❌ Product ASIN not found. Please re-analyze the product.")
+            st.stop()
+
+        # Display user message immediately
+        with st.chat_message("user"):
+            st.write(question)
+
+        # Get answer
+        with st.chat_message("assistant"):
+            with st.spinner("🤔 Thinking..."):
+                try:
+                    # Call chatbot with session_id, product_id (asin), and question
+                    answer = st.session_state.chatbot.ask(st.session_state.session_id, asin, question)
+
+                    # Add to session chat history
+                    st.session_state.chat_history.append({'role': 'user', 'content': question})
+                    st.session_state.chat_history.append({'role': 'assistant', 'content': answer})
+
+                    # Display answer
+                    st.write(answer)
+
+                except Exception as e:
+                    st.error(f"❌ Failed to generate answer: {str(e)}")
 
 
 def reviews_tab():
