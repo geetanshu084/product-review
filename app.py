@@ -315,6 +315,14 @@ def qa_tab():
     st.markdown(f"**Current Product:** {st.session_state.product_data.get('title', 'N/A')}")
     st.markdown("---")
 
+    # Clear chat button at top
+    if st.button("🗑️ Clear Chat", use_container_width=False):
+        st.session_state.chat_history = []
+        st.success("✅ Conversation cleared!")
+        st.rerun()
+
+    st.markdown("---")
+
     # Chat interface
     st.markdown("### Conversation")
 
@@ -330,16 +338,7 @@ def qa_tab():
     else:
         st.info("💭 No conversation yet. Ask a question to get started!")
 
-    # Question input - using chat_input which auto-clears
-    st.markdown("---")
-
-    # Clear chat button
-    if st.button("🗑️ Clear Chat", use_container_width=False):
-        st.session_state.chat_history = []
-        st.success("✅ Conversation cleared!")
-        st.rerun()
-
-    # Chat input (automatically clears after submission)
+    # Chat input at bottom (automatically clears after submission)
     question = st.chat_input("Ask a question about this product...", key="chat_input")
 
     if question:
@@ -349,26 +348,21 @@ def qa_tab():
             st.error("❌ Product ASIN not found. Please re-analyze the product.")
             st.stop()
 
-        # Display user message immediately
-        with st.chat_message("user"):
-            st.write(question)
+        # Get answer with spinner
+        with st.spinner("🤔 Thinking..."):
+            try:
+                # Call chatbot with session_id, product_id (asin), and question
+                answer = st.session_state.chatbot.ask(st.session_state.session_id, asin, question)
 
-        # Get answer
-        with st.chat_message("assistant"):
-            with st.spinner("🤔 Thinking..."):
-                try:
-                    # Call chatbot with session_id, product_id (asin), and question
-                    answer = st.session_state.chatbot.ask(st.session_state.session_id, asin, question)
+                # Add to session chat history (will display on rerun)
+                st.session_state.chat_history.append({'role': 'user', 'content': question})
+                st.session_state.chat_history.append({'role': 'assistant', 'content': answer})
 
-                    # Add to session chat history
-                    st.session_state.chat_history.append({'role': 'user', 'content': question})
-                    st.session_state.chat_history.append({'role': 'assistant', 'content': answer})
+                # Rerun to display in conversation section
+                st.rerun()
 
-                    # Display answer
-                    st.write(answer)
-
-                except Exception as e:
-                    st.error(f"❌ Failed to generate answer: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ Failed to generate answer: {str(e)}")
 
 
 def reviews_tab():
