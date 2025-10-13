@@ -170,12 +170,8 @@ def product_analysis_tab():
 
             st.session_state.product_data = product_data
 
-            # Save to chatbot for Q&A
-            if st.session_state.chatbot:
-                st.session_state.chatbot.set_product_data(
-                    st.session_state.session_id,
-                    product_data
-                )
+            # Note: Product data is already saved to Redis by scraper
+            # Chatbot will access it directly using the ASIN
 
             progress_bar.progress(100)
             progress_text.empty()
@@ -309,23 +305,17 @@ def qa_tab():
     # Chat interface
     st.markdown("### Conversation")
 
-    # Display chat history
-    try:
-        chat_history = st.session_state.chatbot.get_conversation_history(st.session_state.session_id)
-
-        if chat_history:
-            for msg in chat_history:
-                if msg['role'] == 'user':
-                    with st.chat_message("user"):
-                        st.write(msg['content'])
-                else:
-                    with st.chat_message("assistant"):
-                        st.write(msg['content'])
-        else:
-            st.info("💭 No conversation yet. Ask a question to get started!")
-
-    except Exception as e:
-        st.error(f"Failed to load conversation history: {str(e)}")
+    # Display chat history from session state
+    if st.session_state.chat_history:
+        for msg in st.session_state.chat_history:
+            if msg['role'] == 'user':
+                with st.chat_message("user"):
+                    st.write(msg['content'])
+            else:
+                with st.chat_message("assistant"):
+                    st.write(msg['content'])
+    else:
+        st.info("💭 No conversation yet. Ask a question to get started!")
 
     # Question input
     st.markdown("---")
@@ -347,7 +337,18 @@ def qa_tab():
     if send_button and question:
         with st.spinner("🤔 Thinking..."):
             try:
-                answer = st.session_state.chatbot.ask(st.session_state.session_id, question)
+                # Get ASIN from product data
+                asin = st.session_state.product_data.get('asin')
+                if not asin:
+                    st.error("❌ Product ASIN not found. Please re-analyze the product.")
+                    return
+
+                # Call chatbot with session_id, product_id (asin), and question
+                answer = st.session_state.chatbot.ask(st.session_state.session_id, asin, question)
+
+                # Add to session chat history
+                st.session_state.chat_history.append({'role': 'user', 'content': question})
+                st.session_state.chat_history.append({'role': 'assistant', 'content': answer})
 
                 # Display new Q&A
                 with st.chat_message("user"):
@@ -363,12 +364,10 @@ def qa_tab():
                 st.error(f"❌ Failed to generate answer: {str(e)}")
 
     if clear_button:
-        try:
-            st.session_state.chatbot.clear_conversation(st.session_state.session_id)
-            st.success("✅ Conversation cleared!")
-            st.rerun()
-        except Exception as e:
-            st.error(f"❌ Failed to clear conversation: {str(e)}")
+        # Clear chat history from session state
+        st.session_state.chat_history = []
+        st.success("✅ Conversation cleared!")
+        st.rerun()
 
 
 def main():
