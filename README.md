@@ -1,380 +1,381 @@
 # Amazon Product Analysis Agent
 
-An intelligent Python-based agent that analyzes Amazon products by scraping product information and reviews, then uses Google Gemini LLM via LangChain to provide comprehensive analysis and answer user questions interactively.
+An intelligent product analysis system with AI-powered insights, built with a modern backend/frontend architecture.
+
+## Architecture
+
+This project consists of two main components:
+
+```
+amazon-review/
+├── backend/          # Python backend (Streamlit app + core logic)
+├── frontend/         # React TypeScript frontend (in development)
+└── README.md         # This file
+```
+
+## Quick Start
+
+### Backend (Streamlit App)
+
+The backend contains the complete working Streamlit application with all features:
+
+```bash
+cd backend
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment variables
+cp .env.example .env
+# Edit .env and add your API keys
+
+# Start Redis
+redis-server
+
+# Run the application
+streamlit run app.py
+```
+
+See [backend/README.md](backend/README.md) for detailed backend documentation.
+
+### Frontend (React TypeScript)
+
+The frontend is a modern React TypeScript interface (currently in development):
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Environment is pre-configured in .env.development
+# For custom settings, create .env.local (see frontend/ENVIRONMENT_SETUP.md)
+
+# Run development server
+npm run dev
+```
+
+See [frontend/README.md](frontend/README.md) and [frontend/ENVIRONMENT_SETUP.md](frontend/ENVIRONMENT_SETUP.md) for detailed documentation.
 
 ## Features
 
-- **Amazon Product Scraper**: Extracts product details, pricing, ratings, reviews, and seller information
-- **AI-Powered Analysis**: Uses Google Gemini to provide structured product analysis with pros/cons
-- **Multi-Platform Price Comparison**: Compare prices across Amazon, Flipkart, eBay, Walmart, and more (using Serper API)
-- **Conversational Q&A with LLM-Driven Web Search**: Ask questions about products; LLM intelligently decides when to search the internet for current information (LangChain tool integration)
-- **Persistent Memory**: Redis-backed conversation history for seamless multi-session interactions
-- **Interactive Web UI**: Clean Streamlit interface for easy product analysis and chat
+### ✅ Product Analysis
+- **Amazon Scraper**: Extracts product details, reviews, ratings
+- **AI Analysis**: Google Gemini-powered insights with pros/cons
+- **Price Comparison**: Multi-platform price checking (Amazon, Flipkart, etc.)
+- **External Reviews**: Aggregates reviews from tech blogs, Reddit, YouTube
+
+### ✅ Interactive Q&A
+- **LangChain Agent**: Context-aware question answering
+- **Persistent Memory**: Redis-backed chat history
+- **Smart Search**: LLM decides when to search the web
+- **Rich Responses**: Formatted answers with product links
+
+### ✅ Web Search Integration
+- External review analysis
+- Reddit discussions
+- YouTube video reviews
+- Sentiment analysis
+- Red flag detection
+
+## Technology Stack
+
+### Backend
+- **Python 3.9+**
+- **Streamlit** - Web interface
+- **LangChain** - Agent framework
+- **Google Gemini** - LLM (gemini-2.0-flash-exp)
+- **Redis** - Caching and chat history
+- **BeautifulSoup4** - Web scraping
+- **Serper API** - Web search
+
+### Frontend (In Development)
+- **React 18**
+- **TypeScript**
+- **Vite** - Build tool
+- **Axios** - HTTP client
+- **React Context** - State management
+
+## Prerequisites
+
+- Python 3.9 or higher
+- Node.js 18+ (for frontend)
+- Redis server
+- Google API Key (Gemini)
+- Serper API Key (optional, for web search)
+
+## Installation
+
+### 1. Clone the Repository
+```bash
+git clone <repository-url>
+cd amazon-review
+```
+
+### 2. Backend Setup
+```bash
+cd backend
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+# Edit .env and add:
+# - GOOGLE_API_KEY
+# - SERPER_API_KEY (optional)
+# - REDIS_HOST, REDIS_PORT
+```
+
+### 3. Start Redis
+```bash
+# macOS with Homebrew
+brew services start redis
+
+# Linux
+sudo systemctl start redis
+
+# Docker
+docker run -d -p 6379:6379 --name redis redis:latest
+
+# Verify
+redis-cli ping  # Should return PONG
+```
+
+### 4. Run the Application
+```bash
+cd backend
+streamlit run app.py
+```
+
+Open http://localhost:8501 in your browser.
+
+### 5. Frontend Setup (Optional)
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open http://localhost:5000 in your browser.
+
+## Usage
+
+### 1. Analyze a Product
+
+1. Go to the **Product Analysis** tab
+2. Paste an Amazon product URL:
+   ```
+   https://amazon.in/dp/B0D79G62J3
+   ```
+3. Click **"Scrape & Analyze"**
+4. View comprehensive analysis with:
+   - Product details
+   - Pros and cons
+   - Price comparison
+   - External reviews
+   - AI recommendations
+
+### 2. Ask Questions
+
+1. Switch to the **Q&A Chat** tab
+2. Ask questions like:
+   - "What are the main complaints?"
+   - "Is this good value for money?"
+   - "Where can I buy this cheaper?"
+   - "Compare with similar products"
+3. Get AI-powered answers with context
+
+### 3. Review Analysis
+
+1. Go to the **Reviews** tab
+2. Filter by rating or verified purchases
+3. View:
+   - Amazon reviews
+   - External tech reviews
+   - Comparison articles
+   - Reddit discussions
+   - Summary with sentiment analysis
+
+## API Keys
+
+### Google Gemini API
+1. Visit https://makersuite.google.com/app/apikey
+2. Create API key
+3. Add to `.env` as `GOOGLE_API_KEY`
+
+### Serper API (Optional)
+1. Visit https://serper.dev/
+2. Sign up for free tier (2,500 searches/month)
+3. Add to `.env` as `SERPER_API_KEY`
 
 ## Project Structure
 
 ```
 amazon-review/
-├── app.py                              # Streamlit web application
-├── requirements.txt                    # Python dependencies
-├── .env.example                        # Environment variables template
-├── README.md                           # Project documentation
-├── config/
-│   └── prompts/
-│       └── product_analysis_prompt.txt # LLM prompt template
-├── src/
-│   ├── scraper.py                     # Amazon product scraper
-│   ├── analyzer.py                    # LLM analysis engine
-│   ├── chatbot.py                     # Q&A system with Redis memory & web search
-│   └── price_comparison.py            # Multi-platform price comparison
-├── docs/
-│   ├── PRICE_COMPARISON.md            # Price comparison feature docs
-│   └── WEB_SEARCH_QA.md               # Web search feature docs
-└── utils/                             # Utility functions (optional)
+├── backend/
+│   ├── src/                      # Core source code
+│   │   ├── scraper.py           # Amazon scraper
+│   │   ├── analyzer.py          # Product analyzer
+│   │   ├── chatbot.py           # LangChain chatbot
+│   │   └── analysis/
+│   │       ├── price_comparison.py
+│   │       └── web_search.py
+│   ├── tests/                   # Test suite
+│   ├── config/                  # Configuration
+│   │   └── prompts/            # LLM prompts
+│   ├── app.py                   # Streamlit app
+│   ├── requirements.txt         # Dependencies
+│   └── README.md               # Backend docs
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/         # React components
+│   │   ├── contexts/          # State management
+│   │   ├── services/          # API client
+│   │   └── types/             # TypeScript types
+│   ├── package.json
+│   └── README.md              # Frontend docs
+│
+├── README.md                   # This file
+├── README_ARCHITECTURE.md      # Architecture details
+└── SETUP.md                    # Setup guide
 ```
 
-## Prerequisites
+## Documentation
 
-- Python 3.8 or higher
-- Redis server (for Q&A conversation memory)
-- Google API Key for Gemini (free from makersuite.google.com)
-- Serper API Key (optional, for price comparison and web search - free tier: 2,500 searches/month from serper.dev)
-
-## Installation
-
-### 1. Clone or Download the Project
-
-```bash
-cd amazon-review
-```
-
-### 2. Create Virtual Environment
-
-```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# On macOS/Linux:
-source venv/bin/activate
-
-# On Windows:
-venv\Scripts\activate
-```
-
-### 3. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Install and Start Redis
-
-**macOS (using Homebrew):**
-```bash
-brew install redis
-brew services start redis
-```
-
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt-get install redis-server
-sudo systemctl start redis
-sudo systemctl enable redis
-```
-
-**Windows:**
-- Download Redis from https://github.com/microsoftarchive/redis/releases
-- Extract and run `redis-server.exe`
-
-**Docker (All platforms):**
-```bash
-docker run -d -p 6379:6379 --name redis redis:latest
-```
-
-**Verify Redis is running:**
-```bash
-redis-cli ping
-# Should return: PONG
-```
-
-### 5. Configure API Keys
-
-1. Get your Google API key:
-   - Go to https://makersuite.google.com/app/apikey
-   - Sign in with your Google account
-   - Click "Create API key"
-   - Copy the generated API key
-
-2. Get your Serper API key (optional, for price comparison and web search):
-   - Go to https://serper.dev/
-   - Sign up for a free account
-   - Get your API key from the dashboard
-   - Free tier includes 2,500 free searches/month
-
-3. Copy and configure `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-
-4. Add your API keys to `.env`:
-   ```bash
-   GOOGLE_API_KEY=your_google_api_key_here
-
-   # Serper API Key (optional - for price comparison and web search)
-   SERPER_API_KEY=your_serper_api_key_here
-
-   # Redis configuration (default values)
-   REDIS_HOST=localhost
-   REDIS_PORT=6379
-   REDIS_DB=0
-   # REDIS_PASSWORD=your_password  # Uncomment if Redis requires authentication
-   ```
-
-## Usage
-
-### 1. Start the Application
-
-```bash
-streamlit run app.py
-```
-
-The application will open in your default browser at `http://localhost:8501`
-
-### 2. Analyze a Product
-
-1. Go to the **Product Analysis** tab
-2. Paste an Amazon product URL (e.g., `https://www.amazon.com/dp/B08N5WRWNW`)
-3. Click **"Analyze Product"**
-4. Wait for the scraping and analysis to complete (15-30 seconds)
-5. View the comprehensive analysis with:
-   - Executive summary
-   - Product overview
-   - Pros and cons (categorized)
-   - Seller analysis
-   - After-sales service evaluation
-   - Buy/Wait/Avoid recommendation
-
-### 3. Ask Questions (Q&A Tab)
-
-1. After analyzing a product, switch to the **Q&A Chat** tab
-2. Type your question in the input field
-3. Click **Send** to get AI-powered answers based on the product data
-4. Continue the conversation - the system remembers context
-5. Use **Clear Chat** to start a new conversation
-
-**Example questions:**
-
-*Product Information:*
-- "What are the main complaints about this product?"
-- "Is this good for professional use?"
-- "What do customers say about durability?"
-- "Does it come with a warranty?"
-
-*Price Comparison (uses stored data):*
-- "Where can I buy this product?"
-- "What's the best price available?"
-- "Show me prices on Amazon vs Flipkart"
-- "Which platform has the cheapest price?"
-- "How much can I save if I buy from the cheapest platform?"
-
-*Comparison & Current Info (LLM decides to use web search):*
-- "Compare this with Samsung Galaxy S24"
-- "What are the latest deals?"
-- "Is this phone better than iPhone 14 Pro?"
-- "Show me similar alternatives"
-
-## Features in Detail
-
-### Amazon Product Scraper (`src/scraper.py`)
-
-- Extracts ASIN from product URLs
-- Scrapes comprehensive product data:
-  - Product title, brand, price
-  - Overall rating and total reviews
-  - Product description and features
-  - Up to 200 customer reviews with pagination support
-  - Seller name and rating
-- Handles various Amazon URL formats
-- Implements respectful scraping with delays
-- Robust error handling
-
-### LLM Analysis Engine (`src/analyzer.py`)
-
-- Uses Google Gemini Pro via LangChain
-- Structured analysis with predefined sections
-- Categorizes pros and cons by type
-- Evaluates seller trustworthiness
-- Provides actionable recommendations
-- Formats output in clean markdown
-
-### Multi-Platform Price Comparison (`src/price_comparison.py`)
-
-- Compares prices across Amazon, Flipkart, eBay, Walmart, and more
-- Exact product matching with attribute filtering (brand, model, storage, RAM, color)
-- Finds best deals with savings calculation
-- Price statistics (min, max, average, median)
-- Platform-wise breakdown with direct purchase links
-- Powered by Serper Shopping API
-- See [docs/PRICE_COMPARISON.md](docs/PRICE_COMPARISON.md) for details
-
-### Conversational Q&A System (`src/chatbot.py`)
-
-- **LangChain ReAct Agent**: LLM intelligently decides when to use web search tool
-- **LangChain RedisChatMessageHistory**: Standard Redis-backed conversation memory
-- Redis-backed persistent memory with full product data (including price comparison)
-- Maintains conversation context
-- Session-based conversation history
-- Answers based on:
-  - Scraped product data and reviews
-  - **Multi-platform price comparison** (saved to Redis during analysis)
-  - **LLM-driven web search** (LangChain tool - used only when needed)
-- Can answer questions like:
-  - "Where can I buy this product?" (uses price comparison data)
-  - "What's the best price available?" (uses price comparison data)
-  - "Show me prices on Amazon vs Flipkart" (uses price comparison data)
-  - "Compare with Samsung Galaxy S24" (LLM decides to use web_search tool)
-  - "What are the latest deals?" (LLM decides to use web_search tool)
-- **Smart Decision Making**: LLM understands context and only searches when information isn't in product data
-- Seamless integration of price comparison and web search results
-- Clear indication when information is unavailable
-- Memory survives application restarts
-- See [docs/WEB_SEARCH_QA.md](docs/WEB_SEARCH_QA.md) for details
-
-### Streamlit Web Interface (`app.py`)
-
-- Two-tab interface (Analysis + Q&A)
-- Real-time progress indicators
-- Error handling with user-friendly messages
-- Download analysis as markdown
-- Configuration status indicators
-- Responsive design
-
-## API Limits and Considerations
-
-### Google Gemini API
-- Free tier: 60 requests per minute
-- Each analysis uses 1 request
-- Each Q&A question uses 1 request
-- If you hit rate limits, wait a minute and try again
-
-### Amazon Scraping
-- Be respectful: 2-3 second delays between requests
-- Don't scrape aggressively or you may be blocked
-- Use the tool for personal analysis only
-- Some product pages may have different HTML structures
+- [README_ARCHITECTURE.md](README_ARCHITECTURE.md) - Detailed architecture
+- [SETUP.md](SETUP.md) - Comprehensive setup guide
+- [backend/README.md](backend/README.md) - Backend documentation
+- [frontend/README.md](frontend/README.md) - Frontend documentation
 
 ## Troubleshooting
 
-### Redis Connection Errors
-
-**Error:** `Connection refused` or `Error connecting to Redis`
-
-**Solution:**
+### Redis Connection Error
 ```bash
 # Check if Redis is running
 redis-cli ping
 
-# If not running, start Redis:
-# macOS/Linux:
+# Start Redis
 redis-server
-
-# Or using brew services:
-brew services start redis
-
-# Check Redis status:
-brew services list
 ```
 
-### Google API Key Errors
+### API Key Error
+- Verify `.env` file exists in `backend/`
+- Check API keys are valid
+- Ensure no extra spaces in `.env`
 
-**Error:** `Google API Key not configured` or `Authentication error`
-
-**Solution:**
-- Verify your `GOOGLE_API_KEY` is set in `.env` file
-- Get your API key from: https://makersuite.google.com/app/apikey
-- Make sure the API key is valid and not expired
-- Check that you haven't exceeded the free tier rate limits
-
-### Scraping Failures
-
-**Error:** `Failed to scrape product`
-
-**Solution:**
-- Verify the URL is a valid Amazon product page
-- Check your internet connection
-- Try a different product URL
-- Amazon may have temporarily blocked your IP (wait and try again)
-- Some products may have different page structures
-
-### Import Errors
-
-**Error:** `ModuleNotFoundError`
-
-**Solution:**
+### Module Not Found
 ```bash
-# Ensure virtual environment is activated
-source venv/bin/activate  # macOS/Linux
-venv\Scripts\activate     # Windows
-
-# Reinstall dependencies
+cd backend
 pip install -r requirements.txt
 ```
 
-## Environment Variables
+### Scraping Fails
+- Verify Amazon URL is valid
+- Check internet connection
+- Amazon may block aggressive scraping
+- Try a different product
 
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `GOOGLE_API_KEY` | Google API key for Gemini | Yes | - |
-| `SERPER_API_KEY` | Serper API key for price comparison & web search | No | None |
-| `REDIS_HOST` | Redis server hostname | No | localhost |
-| `REDIS_PORT` | Redis server port | No | 6379 |
-| `REDIS_DB` | Redis database number | No | 0 |
-| `REDIS_PASSWORD` | Redis password | No | None |
+## Features in Detail
+
+### Product Scraping
+- Extracts ASIN from URLs
+- Scrapes product details, reviews, ratings
+- Supports pagination (up to 200 reviews)
+- Redis caching for performance
+
+### AI Analysis
+- Google Gemini 2.0 Flash LLM
+- Structured markdown output
+- Price comparison integration
+- External review aggregation
+- Sentiment analysis
+
+### Price Comparison
+- Multi-platform checking
+- Amazon, Flipkart, eBay, Walmart
+- Best deal recommendations
+- Savings calculation
+
+### Web Search Integration
+- Tech blog reviews
+- Reddit discussions
+- YouTube videos
+- Issue tracking
+- Red flags detection
+
+### Interactive Chat
+- LangChain ReAct agent
+- Redis chat history
+- Context-aware responses
+- Rich link formatting
+
+## Development
+
+### Running Tests
+```bash
+cd backend
+pytest
+```
+
+### Verify Setup
+```bash
+cd backend
+python verify_setup.py
+```
+
+### Code Structure
+- `src/scraper.py` - Amazon scraping logic
+- `src/analyzer.py` - LLM analysis
+- `src/chatbot.py` - Q&A system
+- `src/analysis/price_comparison.py` - Price checking
+- `src/analysis/web_search.py` - External reviews
 
 ## Limitations
 
-1. **Scraping Reliability**: Amazon's HTML structure may change, affecting scraping accuracy
-2. **Review Limit**: Scrapes up to 200 reviews with pagination (can take 40+ seconds for full scraping)
-3. **Rate Limits**: Subject to Google Gemini API rate limits
-4. **Regional Variations**: Optimized for Amazon.com (other regions may need adjustments)
-5. **Dynamic Content**: Some Amazon pages load content dynamically via JavaScript (not supported)
+1. **Scraping**: Amazon HTML may change
+2. **Reviews**: Limited to 200 per product
+3. **Rate Limits**: Google Gemini API limits apply
+4. **Regions**: Optimized for Amazon India
+5. **Dynamic Content**: No JavaScript rendering
 
 ## Future Enhancements
 
-- [x] Add price comparison with other e-commerce sites (Completed - Phase 2)
-- [x] Add web search capability to Q&A chatbot (Completed - Phase 2)
-- [x] Scrape more reviews with pagination support (up to 200 reviews)
-- [ ] Add sentiment analysis visualization charts
-- [ ] Export analysis as PDF
-- [ ] Product comparison feature (side-by-side)
-- [ ] Implement caching to avoid re-scraping
-- [ ] Support for multiple Amazon regional domains
-- [ ] Email notifications for price drops
-- [ ] Historical price tracking
+- ✅ Price comparison (completed)
+- ✅ Web search integration (completed)
+- ✅ External reviews (completed)
+- ⏳ React frontend (in progress)
+- 📋 FastAPI backend (planned)
+- 📋 Sentiment visualization
+- 📋 PDF export
+- 📋 Product comparison
+- 📋 Price tracking
 
 ## Contributing
 
-Feel free to submit issues, feature requests, or pull requests to improve this project.
+Contributions welcome! Please submit issues or pull requests.
 
 ## License
 
-This project is for educational and personal use only. Please respect Amazon's Terms of Service and robots.txt when scraping.
+MIT License - For educational and personal use only.
 
 ## Disclaimer
 
-This tool is intended for personal use only. Scraping Amazon at scale or for commercial purposes may violate Amazon's Terms of Service. Use responsibly and ethically.
+This tool is for personal use. Respect Amazon's Terms of Service. Do not scrape aggressively or for commercial purposes.
 
 ---
 
 **Built with:**
-- Python 3.8+
-- Streamlit
-- LangChain
-- Google Gemini AI
-- BeautifulSoup4
-- Redis
+- Python, Streamlit, LangChain, Google Gemini
+- React, TypeScript (frontend in development)
+- Redis, BeautifulSoup4, Serper API
+
+**Version:** 3.0.0 (Backend/Frontend Architecture)
 
 **Author:** AI Product Analysis Team
-
-**Version:** 2.0.0 (Phase 2: Price Comparison + Web Search)

@@ -836,7 +836,7 @@ class AmazonScraper:
                     'text': self._extract_review_text(review_div),
                     'author': self._extract_review_author(review_div),
                     'date': self._extract_review_date(review_div),
-                    'verified': self._extract_review_verified(review_div)
+                    'verified_purchase': self._extract_review_verified(review_div)
                 }
 
                 # Only add if we got at least some meaningful data

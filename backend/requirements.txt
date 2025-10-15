@@ -12,3 +12,9 @@ lxml==5.1.0
 selenium==4.16.0
 webdriver-manager==4.0.1
 fake-useragent==1.4.0
+
+# FastAPI Dependencies
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+pydantic==2.6.1
+pydantic-settings==2.1.0
