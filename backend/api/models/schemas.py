@@ -102,13 +102,6 @@ class ClearChatRequest(BaseModel):
 
 
 # Response Models
-class ScrapeResponse(BaseModel):
-    """Response from scraping"""
-    success: bool
-    message: str
-    data: Optional[ProductData] = None
-
-
 class AnalysisResponse(BaseModel):
     """Response from analysis"""
     success: bool

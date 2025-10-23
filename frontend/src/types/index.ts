@@ -125,12 +125,6 @@ export interface ClearChatRequest {
 }
 
 // Response types
-export interface ScrapeResponse {
-  success: boolean;
-  message: string;
-  data?: ProductData;
-}
-
 export interface AnalysisResponse {
   success: boolean;
   message: string;

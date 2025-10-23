@@ -5,7 +5,6 @@
 import axios, { AxiosInstance } from 'axios';
 import type {
   ScrapeRequest,
-  ScrapeResponse,
   AnalyzeRequest,
   AnalysisResponse,
   ChatRequest,
@@ -50,8 +49,8 @@ class ApiClient {
   // Product endpoints
 
   /**
-   * Unified endpoint: Scrape and analyze product in one call
-   * This is the recommended method that runs the complete pipeline
+   * Scrape and analyze product in one call
+   * Recommended for first-time product analysis
    */
   async scrapeAndAnalyze(request: ScrapeRequest): Promise<AnalysisResponse> {
     const response = await this.client.post<AnalysisResponse>('/products/scrape-and-analyze', request);
@@ -59,15 +58,8 @@ class ApiClient {
   }
 
   /**
-   * Legacy: Scrape product only (without analysis)
-   */
-  async scrapeProduct(request: ScrapeRequest): Promise<ScrapeResponse> {
-    const response = await this.client.post<ScrapeResponse>('/products/scrape', request);
-    return response.data;
-  }
-
-  /**
-   * Legacy: Analyze already-scraped product
+   * Re-analyze already-scraped product using cached data
+   * Use this to get fresh analysis without re-scraping
    */
   async analyzeProduct(request: AnalyzeRequest): Promise<AnalysisResponse> {
     const response = await this.client.post<AnalysisResponse>('/products/analyze', request);

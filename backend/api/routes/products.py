@@ -6,7 +6,6 @@ from fastapi import APIRouter, HTTPException
 from api.models.schemas import (
     ScrapeRequest,
     AnalyzeRequest,
-    ScrapeResponse,
     AnalysisResponse,
     ProductData,
 )
@@ -63,47 +62,6 @@ async def scrape_and_analyze_product(request: ScrapeRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
-
-
-@router.post("/scrape", response_model=ScrapeResponse)
-async def scrape_product(request: ScrapeRequest):
-    """
-    NEW: Scrape product data with parallel execution using LangGraph
-
-    Runs in parallel:
-    - Amazon scraping
-    - Price comparison (if enabled)
-    - Web search for reviews (if enabled)
-
-    Results are combined and cached in Redis for 24 hours.
-
-    Args:
-        request: ScrapeRequest with Amazon URL and optional flags
-
-    Returns:
-        ScrapeResponse with complete product data (cached for future use)
-    """
-    try:
-        # Convert HttpUrl to string
-        url = str(request.url)
-
-        # Run LangGraph workflow with parallel execution
-        product_data = product_service.scrape_product(
-            url=url,
-            include_price_comparison=request.include_price_comparison,
-            include_web_search=request.include_web_search
-        )
-
-        return ScrapeResponse(
-            success=True,
-            message="Product scraped successfully (with parallel data collection)",
-            data=ProductData(**product_data)
-        )
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
 
 
 @router.post("/analyze", response_model=AnalysisResponse)
