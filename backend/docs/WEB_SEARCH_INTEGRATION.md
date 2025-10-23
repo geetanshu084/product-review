@@ -256,7 +256,7 @@ Web search runs automatically when analyzing a product:
 ### Run Test Suite
 
 ```bash
-cd /path/to/amazon-review
+cd /path/to/product-review
 python tests/test_web_search_integration.py
 ```
 

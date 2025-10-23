@@ -103,7 +103,7 @@ def test_product_details():
         print(f"\n--- REVIEWS ({len(reviews)} scraped) ---")
 
         # Save to JSON for inspection
-        output_file = "/Users/geetanshu/vibegf/amazon-review/test_product_data.json"
+        output_file = "/Users/geetanshu/vibegf/product-review/test_product_data.json"
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(product_data, f, indent=2, ensure_ascii=False)
 

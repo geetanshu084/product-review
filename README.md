@@ -53,7 +53,7 @@ An AI-powered product analysis platform that scrapes e-commerce product data fro
 ## Project Structure
 
 ```
-amazon-review/
+product-review/
 ├── backend/          # Python FastAPI backend (see backend/README.md)
 └── frontend/         # React TypeScript frontend (see frontend/README.md)
 ```

@@ -98,9 +98,6 @@ POST /api/v1/products/scrape-and-analyze
 - Body: { url, include_price_comparison, include_web_search }
 - Returns: ProductData + analysis markdown
 
-GET /api/v1/products/{product_id}
-- Retrieves cached product data
-- Returns: ProductData
 ```
 
 #### Chat API (`api/routes/chat.py`)
