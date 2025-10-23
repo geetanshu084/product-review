@@ -54,17 +54,26 @@ class ProductWorkflowState(TypedDict):
 
 class ProductWorkflowOrchestrator:
     """
-    LangGraph-based orchestrator for product data collection
+    LangGraph-based orchestrator for product data collection with intelligent caching
 
     Workflow:
-    1. Check Redis cache first
-    2. If not cached, run 3 parallel nodes:
-       - Amazon scraping
-       - Price comparison (if enabled)
-       - Web search (if enabled)
-    3. Combine results
-    4. Save to Redis
-    5. Return complete product data
+    1. Check Redis cache first for both product data AND analysis
+    2. If fully cached (data + analysis): Return immediately (NO LLM calls!)
+    3. If only data cached: Skip to LLM analysis
+    4. If not cached at all:
+       a. Scrape product page (Amazon, Flipkart, etc.)
+       b. Run in parallel:
+          - Price comparison (if enabled)
+          - Web search for reviews (if enabled)
+       c. Combine all results
+       d. Save product data to Redis (24h TTL)
+       e. Run LLM analysis
+       f. Save analysis to Redis (24h TTL)
+    5. Return complete product data + analysis
+
+    Cache Keys:
+    - Product data: product:{asin} or flipkart:{fsn}
+    - Analysis: product:{asin}:analysis or flipkart:{fsn}:analysis
     """
 
     def __init__(
@@ -131,7 +140,8 @@ class ProductWorkflowOrchestrator:
             "check_cache",
             self._should_skip_fetching,
             {
-                "cached": "analyze_with_llm",  # Data found in cache, analyze it
+                "fully_cached": END,  # Both data and analysis cached, skip everything
+                "data_cached": "analyze_with_llm",  # Data cached but need to analyze
                 "fetch": "scrape_amazon"  # No cache, proceed with fetching
             }
         )
@@ -155,7 +165,7 @@ class ProductWorkflowOrchestrator:
         return workflow.compile()
 
     def _check_cache_node(self, state: ProductWorkflowState) -> ProductWorkflowState:
-        """Check if product data exists in Redis cache"""
+        """Check if product data and analysis exist in Redis cache"""
         print("\n🔍 Checking Redis cache...")
 
         try:
@@ -170,9 +180,14 @@ class ProductWorkflowOrchestrator:
                 print("  ⚠ Could not extract product ID from URL")
                 return state
 
-            # Try to get from cache using platform-specific cache key
-            cache_key = scraper.get_cache_key(product_id)
+            # Try to get product data from cache using consistent cache key
+            # Use product:{id} format consistently
+            cache_key = f"product:{product_id}"
             cached_json = self.redis_client.get(cache_key)
+
+            # Try to get analysis from cache
+            analysis_cache_key = f"{cache_key}:analysis"
+            cached_analysis = self.redis_client.get(analysis_cache_key)
 
             if cached_json:
                 cached_data = json.loads(cached_json)
@@ -193,6 +208,15 @@ class ProductWorkflowOrchestrator:
                     state["scraping_complete"] = True
                     state["price_comparison_complete"] = True
                     state["web_search_complete"] = True
+
+                    # Check if analysis is also cached
+                    if cached_analysis:
+                        print(f"  ✓ Cached analysis found - skipping LLM call")
+                        state["analysis"] = cached_analysis.decode('utf-8') if isinstance(cached_analysis, bytes) else cached_analysis
+                        state["analysis_complete"] = True
+                    else:
+                        print(f"  ⚠ No cached analysis found - will run LLM analysis")
+
                     return state
                 else:
                     print(f"  ⚠ Partial cache found - missing requested components")
@@ -209,8 +233,11 @@ class ProductWorkflowOrchestrator:
     def _should_skip_fetching(self, state: ProductWorkflowState) -> str:
         """Determine if we should skip fetching based on cache"""
         if state.get("product_data"):
-            return "cached"
-        return "fetch"
+            # Check if analysis is also cached
+            if state.get("analysis_complete") and state.get("analysis"):
+                return "fully_cached"  # Both data and analysis cached
+            return "data_cached"  # Only data cached, need to analyze
+        return "fetch"  # Nothing cached, need to fetch everything
 
     def _scrape_amazon_node(self, state: ProductWorkflowState) -> ProductWorkflowState:
         """Scrape product page (Amazon, Flipkart, etc.)"""
@@ -378,6 +405,11 @@ class ProductWorkflowOrchestrator:
 
     def _analyze_with_llm_node(self, state: ProductWorkflowState) -> ProductWorkflowState:
         """Analyze product data with LLM (final step)"""
+        # Skip if analysis already exists (from cache)
+        if state.get("analysis_complete") and state.get("analysis"):
+            print("\n✓ Using cached analysis - skipping LLM call")
+            return state
+
         if not state.get("product_data"):
             print("\n⚠ Skipping analysis (no product data available)")
             state["analysis_complete"] = True
@@ -406,6 +438,19 @@ class ProductWorkflowOrchestrator:
                 state["product_data"] = result["structured_data"]
 
             print(f"  ✓ Analysis complete ({len(state['analysis'])} characters)")
+
+            # Cache the analysis separately for faster future requests
+            if state.get("asin") and state["analysis"]:
+                try:
+                    # Use consistent cache key format: product:{id}
+                    cache_key = f"product:{state['asin']}"
+                    analysis_cache_key = f"{cache_key}:analysis"
+
+                    # Save analysis with same TTL as product data (24 hours)
+                    self.redis_client.setex(analysis_cache_key, 86400, state["analysis"])
+                    print(f"  ✓ Cached analysis to Redis: {analysis_cache_key}")
+                except Exception as cache_error:
+                    print(f"  ⚠ Failed to cache analysis: {str(cache_error)}")
 
         except Exception as e:
             print(f"  ❌ Analysis failed: {str(e)}")
@@ -469,12 +514,17 @@ class ProductWorkflowOrchestrator:
                 for error in final_state["errors"]:
                     print(f"  - {error}")
 
+            # Determine cache status
+            was_cached = final_state.get("product_data") and not final_state.get("amazon_data")
+            analysis_cached = was_cached and final_state.get("analysis_complete") and final_state.get("analysis")
+
             return {
                 "success": True,
                 "data": final_state.get("product_data", {}),
                 "analysis": final_state.get("analysis", ""),
                 "errors": final_state.get("errors", []),
-                "cached": final_state.get("product_data") and not final_state.get("amazon_data")
+                "cached": was_cached,
+                "analysis_cached": analysis_cached
             }
 
         except Exception as e:

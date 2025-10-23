@@ -6,9 +6,12 @@ import React, { useState } from 'react';
 import { useProduct } from '@/contexts/ProductContext';
 import type { Review, ExternalReview } from '@/types';
 
-const ReviewsTab: React.FC = () => {
+interface ReviewsTabProps {
+  activeView: 'platform' | 'external' | 'summary';
+}
+
+const ReviewsTab: React.FC<ReviewsTabProps> = ({ activeView }) => {
   const { productData } = useProduct();
-  const [activeSubTab, setActiveSubTab] = useState<'platform' | 'external' | 'summary'>('platform');
   const [ratingFilter, setRatingFilter] = useState<number>(0);
   const [verifiedOnly, setVerifiedOnly] = useState<boolean>(false);
 
@@ -49,30 +52,8 @@ const ReviewsTab: React.FC = () => {
 
   return (
     <div style={styles.container}>
-      {/* Sub-tabs */}
-      <div style={styles.subTabs}>
-        <button
-          onClick={() => setActiveSubTab('platform')}
-          style={activeSubTab === 'platform' ? { ...styles.subTab, ...styles.subTabActive } : styles.subTab}
-        >
-          {platformIcon} {platformName} Reviews ({platformReviews.length})
-        </button>
-        <button
-          onClick={() => setActiveSubTab('external')}
-          style={activeSubTab === 'external' ? { ...styles.subTab, ...styles.subTabActive } : styles.subTab}
-        >
-          🌐 Reviews, Comparisons, Reddit & News ({mergedExternalContent.length})
-        </button>
-        <button
-          onClick={() => setActiveSubTab('summary')}
-          style={activeSubTab === 'summary' ? { ...styles.subTab, ...styles.subTabActive } : styles.subTab}
-        >
-          📊 Summary
-        </button>
-      </div>
-
       {/* Platform Reviews */}
-      {activeSubTab === 'platform' && (
+      {activeView === 'platform' && (
         <div style={styles.content}>
           <div style={styles.filters}>
             <div style={styles.filterGroup}>
@@ -123,7 +104,7 @@ const ReviewsTab: React.FC = () => {
       )}
 
       {/* External Reviews, Comparisons, Reddit & News (Merged) */}
-      {activeSubTab === 'external' && (
+      {activeView === 'external' && (
         <div style={styles.content}>
           {mergedExternalContent.length > 0 ? (
             <div style={styles.reviewsList}>
@@ -176,7 +157,7 @@ const ReviewsTab: React.FC = () => {
       )}
 
       {/* Summary */}
-      {activeSubTab === 'summary' && (
+      {activeView === 'summary' && (
         <div style={styles.content}>
           {webSearch ? (
             <>
@@ -233,26 +214,6 @@ const styles = {
     textAlign: 'center' as const,
     padding: '3rem',
     color: '#666',
-  },
-  subTabs: {
-    display: 'flex',
-    gap: '0.5rem',
-    marginBottom: '1.5rem',
-    borderBottom: '2px solid #e0e0e0',
-  },
-  subTab: {
-    padding: '0.75rem 1.5rem',
-    backgroundColor: 'transparent',
-    border: 'none',
-    borderBottom: '3px solid transparent',
-    cursor: 'pointer',
-    fontSize: '1rem',
-    color: '#666',
-  },
-  subTabActive: {
-    borderBottomColor: '#ff9900',
-    color: '#232f3e',
-    fontWeight: '600',
   },
   content: {
     backgroundColor: 'white',

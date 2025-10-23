@@ -16,22 +16,27 @@ router = APIRouter()
 @router.post("/scrape-and-analyze", response_model=AnalysisResponse)
 async def scrape_and_analyze_product(request: ScrapeRequest):
     """
-    UNIFIED: Complete pipeline with parallel execution + LLM analysis
+    UNIFIED: Complete pipeline with parallel execution + intelligent caching
 
     This is the recommended endpoint that uses LangGraph for optimal performance:
-    1. Check Redis cache first
-    2. If NOT cached, run in parallel:
-       - Scrape Amazon page
-       - Search internet for competitive prices
-       - Search internet for external reviews/feedback
-    3. Combine results and save to Redis (24h cache)
-    4. Run LLM analysis on complete data
+    1. Check Redis cache for BOTH product data AND analysis
+    2. If fully cached: Return immediately (NO LLM calls - fastest!)
+    3. If only data cached: Run LLM analysis only
+    4. If NOT cached at all:
+       - Scrape product page (Amazon/Flipkart)
+       - Run in parallel: Price comparison + Web search
+       - Combine results and save to Redis (24h TTL)
+       - Run LLM analysis and cache it (24h TTL)
     5. Return both structured data and analysis
 
-    Subsequent calls with same URL will use cached data (much faster!)
+    Caching Strategy:
+    - First call: Full scraping + analysis (~30-60 seconds)
+    - Subsequent calls: Instant response from cache (<1 second)
+    - Cache keys: product:{asin} and product:{asin}:analysis
+    - TTL: 24 hours for both data and analysis
 
     Args:
-        request: ScrapeRequest with Amazon URL and optional flags
+        request: ScrapeRequest with product URL and optional flags
 
     Returns:
         AnalysisResponse with structured data and analysis

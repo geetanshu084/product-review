@@ -36,7 +36,9 @@ class CompetitorPrice(BaseModel):
 
 class PriceComparison(BaseModel):
     """Price comparison model"""
-    current_price: str
+    model_config = {"extra": "allow"}  # Allow extra fields from cache
+
+    current_price: Optional[str] = None
     alternative_prices: List[Dict[str, str]] = []
 
 

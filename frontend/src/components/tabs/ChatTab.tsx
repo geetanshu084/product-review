@@ -145,13 +145,22 @@ const ChatTab: React.FC = () => {
             opacity: 1;
           }
         }
+
+        .clear-chat-btn:hover {
+          background-color: rgba(220, 53, 69, 0.1);
+          transform: scale(1.1);
+        }
+
+        .clear-chat-btn:active {
+          transform: scale(0.95);
+        }
       `}</style>
       <div style={styles.container}>
         <div style={styles.header}>
         <h3 style={styles.title}>💬 Ask Questions About This Product</h3>
         {chatHistory.length > 0 && (
-          <button onClick={handleClearChat} style={styles.clearButton}>
-            🗑️ Clear Chat
+          <button onClick={handleClearChat} className="clear-chat-btn" style={styles.clearButton} title="Clear chat">
+            🗑️
           </button>
         )}
       </div>
@@ -171,7 +180,7 @@ const ChatTab: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div style={styles.messages}>
+          <div className="scrollable-content" style={styles.messages}>
             {chatHistory.map((msg, idx) => (
               <div
                 key={idx}
@@ -233,7 +242,8 @@ const styles = {
     padding: '1rem',
     display: 'flex',
     flexDirection: 'column' as const,
-    height: '600px',
+    height: '100%',
+    flex: 1,
   },
   emptyState: {
     textAlign: 'center' as const,
@@ -248,17 +258,21 @@ const styles = {
   },
   title: {
     margin: '0',
-    fontSize: '1.3rem',
+    fontSize: '1.1rem',
     color: '#232f3e',
   },
   clearButton: {
-    padding: '0.5rem 1rem',
-    backgroundColor: '#dc3545',
-    color: 'white',
+    padding: '0.5rem',
+    backgroundColor: 'transparent',
+    color: '#dc3545',
     border: 'none',
     borderRadius: '4px',
     cursor: 'pointer',
-    fontSize: '0.875rem',
+    fontSize: '1.25rem',
+    transition: 'background-color 0.2s, transform 0.1s',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chatContainer: {
     flex: 1,

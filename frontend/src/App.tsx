@@ -5,22 +5,73 @@
 import React, { useState } from 'react';
 import { ProductProvider, useProduct } from './contexts/ProductContext';
 import Header from './components/Header';
-import ScrapeForm from './components/ScrapeForm';
 import ProductAnalysisView from './components/ProductAnalysisView';
 import ReviewsTab from './components/tabs/ReviewsTab';
 import ChatTab from './components/tabs/ChatTab';
 
 const AppContent: React.FC = () => {
   const { productData, analysis, isLoading, error } = useProduct();
-  const [activeTab, setActiveTab] = useState<'analysis' | 'reviews' | 'chat'>('analysis');
+  const [leftView, setLeftView] = useState<'analysis' | 'platform' | 'external' | 'summary'>('analysis');
 
   return (
-    <div style={styles.app}>
-      <Header />
+    <>
+      <style>{`
+        /* Custom scrollbar styling */
+        .scrollable-content {
+          scrollbar-width: thin;
+          scrollbar-color: transparent transparent;
+          transition: scrollbar-color 0.3s ease;
+        }
 
-      <main style={styles.main}>
+        .scrollable-content:hover {
+          scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+        }
+
+        .scrollable-content::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        .scrollable-content::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .scrollable-content::-webkit-scrollbar-thumb {
+          background: transparent;
+          border-radius: 4px;
+          transition: background 0.3s ease;
+        }
+
+        .scrollable-content:hover::-webkit-scrollbar-thumb {
+          background: rgba(0, 0, 0, 0.3);
+        }
+
+        .scrollable-content::-webkit-scrollbar-thumb:hover {
+          background: rgba(0, 0, 0, 0.5);
+        }
+
+        @media (max-width: 1024px) {
+          .two-column-layout {
+            grid-template-columns: 1fr !important;
+          }
+          .sticky-chat {
+            position: relative !important;
+            height: 600px !important;
+            max-height: 600px !important;
+          }
+        }
+        @media (max-width: 768px) {
+          .header-container {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 1rem !important;
+          }
+        }
+      `}</style>
+      <div style={styles.app}>
+        <Header />
+
+        <main style={styles.main}>
         <div style={styles.container}>
-          <ScrapeForm />
 
           {error && (
             <div style={styles.errorBanner}>
@@ -36,50 +87,71 @@ const AppContent: React.FC = () => {
           )}
 
           {productData && analysis && (
-            <>
-              {/* Tabs */}
-              <div style={styles.tabs}>
-                <button
-                  onClick={() => setActiveTab('analysis')}
-                  style={
-                    activeTab === 'analysis'
-                      ? { ...styles.tab, ...styles.tabActive }
-                      : styles.tab
-                  }
-                >
-                  📊 Analysis
-                </button>
-                <button
-                  onClick={() => setActiveTab('reviews')}
-                  style={
-                    activeTab === 'reviews'
-                      ? { ...styles.tab, ...styles.tabActive }
-                      : styles.tab
-                  }
-                >
-                  ⭐ Reviews ({productData.reviews?.length || 0})
-                </button>
-                <button
-                  onClick={() => setActiveTab('chat')}
-                  style={
-                    activeTab === 'chat'
-                      ? { ...styles.tab, ...styles.tabActive }
-                      : styles.tab
-                  }
-                >
-                  💬 Q&A
-                </button>
+            <div className="two-column-layout" style={styles.twoColumnLayout}>
+              {/* Left Column - Analysis & Reviews */}
+              <div style={styles.leftColumn}>
+                {/* Sub-navigation for left column */}
+                <div style={styles.leftNav}>
+                  <button
+                    onClick={() => setLeftView('analysis')}
+                    style={
+                      leftView === 'analysis'
+                        ? { ...styles.navButton, ...styles.navButtonActive }
+                        : styles.navButton
+                    }
+                  >
+                    📊 Analysis
+                  </button>
+                  <button
+                    onClick={() => setLeftView('platform')}
+                    style={
+                      leftView === 'platform'
+                        ? { ...styles.navButton, ...styles.navButtonActive }
+                        : styles.navButton
+                    }
+                  >
+                    ⭐ Reviews ({productData.reviews?.length || 0})
+                  </button>
+                  <button
+                    onClick={() => setLeftView('external')}
+                    style={
+                      leftView === 'external'
+                        ? { ...styles.navButton, ...styles.navButtonActive }
+                        : styles.navButton
+                    }
+                  >
+                    🌐 External
+                  </button>
+                  <button
+                    onClick={() => setLeftView('summary')}
+                    style={
+                      leftView === 'summary'
+                        ? { ...styles.navButton, ...styles.navButtonActive }
+                        : styles.navButton
+                    }
+                  >
+                    📊 Summary
+                  </button>
+                </div>
+
+                {/* Left column content */}
+                <div className="scrollable-content" style={styles.leftContent}>
+                  {leftView === 'analysis' && (
+                    <ProductAnalysisView product={productData} analysis={analysis} />
+                  )}
+                  {(leftView === 'platform' || leftView === 'external' || leftView === 'summary') && (
+                    <ReviewsTab activeView={leftView} />
+                  )}
+                </div>
               </div>
 
-              {/* Tab Content */}
-              <div style={styles.tabContent}>
-                {activeTab === 'analysis' && (
-                  <ProductAnalysisView product={productData} analysis={analysis} />
-                )}
-                {activeTab === 'reviews' && <ReviewsTab />}
-                {activeTab === 'chat' && <ChatTab />}
+              {/* Right Column - Chat (Sticky) */}
+              <div style={styles.rightColumn}>
+                <div className="sticky-chat" style={styles.stickyChat}>
+                  <ChatTab />
+                </div>
               </div>
-            </>
+            </div>
           )}
 
           {!productData && !isLoading && !error && (
@@ -111,10 +183,11 @@ const AppContent: React.FC = () => {
         </div>
       </main>
 
-      <footer style={styles.footer}>
-        <p>Powered by geetanshu.ai 🚀</p>
-      </footer>
+        <footer style={styles.footer}>
+          <p>Powered by geetanshu.ai 🚀</p>
+        </footer>
     </div>
+    </>
   );
 };
 
@@ -132,15 +205,31 @@ const styles = {
     backgroundColor: '#f5f5f5',
     display: 'flex',
     flexDirection: 'column' as const,
+    overflowX: 'hidden' as const,
+    width: '100%',
+    height: '100vh',
+    overflow: 'hidden',
   },
   main: {
     flex: 1,
-    padding: '2rem 0',
+    padding: '0.5rem 0 0 0',
+    width: '100%',
+    overflowX: 'hidden' as const,
+    overflowY: 'hidden' as const,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    minHeight: 0,
   },
   container: {
-    maxWidth: '1200px',
+    maxWidth: '100%',
+    width: '100%',
+    flex: 1,
     margin: '0 auto',
-    padding: '0 1rem',
+    padding: '0 1rem 0.5rem 1rem',
+    boxSizing: 'border-box' as const,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    minHeight: 0,
   },
   errorBanner: {
     backgroundColor: '#ffebee',
@@ -164,37 +253,88 @@ const styles = {
   spinner: {
     animation: 'spin 1s linear infinite',
   },
-  tabs: {
+  twoColumnLayout: {
+    display: 'grid',
+    gridTemplateColumns: '7fr 3fr',
+    gap: '1rem',
+    alignItems: 'start',
+    width: '100%',
+    boxSizing: 'border-box' as const,
+    overflow: 'visible' as const,
+    flex: 1,
+    minHeight: 0,
+  },
+  leftColumn: {
     display: 'flex',
-    gap: '0.5rem',
+    flexDirection: 'column' as const,
+    gap: '0',
+    width: '100%',
+    height: '100%',
+    minWidth: 0,
+    minHeight: 0,
+    boxSizing: 'border-box' as const,
+    overflow: 'hidden',
+  },
+  leftNav: {
+    display: 'flex',
+    gap: '0.25rem',
     marginBottom: '0',
     borderBottom: '2px solid #e0e0e0',
     backgroundColor: 'white',
     borderTopLeftRadius: '8px',
     borderTopRightRadius: '8px',
     padding: '0.5rem 0.5rem 0',
+    flexShrink: 0,
+    overflowX: 'auto' as const,
   },
-  tab: {
-    padding: '0.75rem 2rem',
+  navButton: {
+    padding: '0.75rem 1rem',
     backgroundColor: 'transparent',
     border: 'none',
     borderBottom: '3px solid transparent',
     cursor: 'pointer',
-    fontSize: '1rem',
+    fontSize: '0.9rem',
     color: '#666',
     fontWeight: '500',
+    transition: 'all 0.2s',
+    whiteSpace: 'nowrap' as const,
   },
-  tabActive: {
+  navButtonActive: {
     borderBottomColor: '#ff9900',
     color: '#232f3e',
     fontWeight: '600',
   },
-  tabContent: {
+  leftContent: {
     backgroundColor: '#fafafa',
     borderBottomLeftRadius: '8px',
     borderBottomRightRadius: '8px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    minHeight: '400px',
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto' as const,
+    overflowX: 'hidden' as const,
+  },
+  rightColumn: {
+    position: 'relative' as const,
+    width: '100%',
+    height: '100%',
+    minWidth: 0,
+    minHeight: 0,
+    boxSizing: 'border-box' as const,
+    overflow: 'hidden',
+  },
+  stickyChat: {
+    position: 'relative' as const,
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    overflow: 'hidden',
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box' as const,
   },
   welcomeMessage: {
     backgroundColor: 'white',
@@ -222,8 +362,8 @@ const styles = {
     backgroundColor: '#232f3e',
     color: 'white',
     textAlign: 'center' as const,
-    padding: '1.5rem 0',
-    marginTop: '3rem',
+    padding: '0.75rem 0',
+    marginTop: '0',
   },
 };
 

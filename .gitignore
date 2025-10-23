@@ -65,3 +65,4 @@ product_analysis_*.md
 
 # Claude Code
 CLAUDE.md
+.claude/
