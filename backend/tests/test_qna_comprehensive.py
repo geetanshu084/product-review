@@ -6,7 +6,7 @@ Test script to verify Q&A chatbot can answer questions about product details
 import os
 import uuid
 from dotenv import load_dotenv
-from src.scraper import AmazonScraper
+from src.scrapers import ScraperFactory
 from src.chatbot import ProductChatbot
 
 # Load environment variables
@@ -32,7 +32,7 @@ def test_qna_with_product_details():
 
     # Step 2: Scrape product
     print("\nStep 2: Scraping product data...")
-    scraper = AmazonScraper()
+    scraper = ScraperFactory.get_scraper(test_url)
     try:
         product_data = scraper.scrape_product(test_url)
         print(f"✓ Product scraped successfully")

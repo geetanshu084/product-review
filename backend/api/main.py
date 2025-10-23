@@ -17,6 +17,25 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.core.config import settings
 from api.routes import products, chat
+import sys
+
+# Validate LLM configuration at startup (CRITICAL - fail fast)
+if not settings.has_llm_configured():
+    print("=" * 80)
+    print("❌ ERROR: No LLM provider configured!")
+    print("=" * 80)
+    print("\nLLM is required for core functionality. Please configure one of:")
+    print("  - Google Gemini: Set GOOGLE_API_KEY and LLM_PROVIDER=google")
+    print("  - OpenAI: Set OPENAI_API_KEY and LLM_PROVIDER=openai")
+    print("  - Anthropic: Set ANTHROPIC_API_KEY and LLM_PROVIDER=anthropic")
+    print("  - Groq: Set GROQ_API_KEY and LLM_PROVIDER=groq")
+    print("  - Cohere: Set COHERE_API_KEY and LLM_PROVIDER=cohere")
+    print("  - Ollama: Set LLM_PROVIDER=ollama (runs locally)")
+    print("\nSee backend/docs/LLM_PROVIDERS.md for setup instructions.")
+    print("=" * 80)
+    sys.exit(1)
+
+print(f"✓ LLM Provider: {settings.LLM_PROVIDER}")
 
 # Create FastAPI app
 app = FastAPI(

@@ -20,7 +20,10 @@ const ChatTab: React.FC = () => {
   const handleAsk = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!question.trim() || !productData?.asin) {
+    // Use product_id (preferred) or asin (backward compatibility)
+    const productId = productData?.product_id || productData?.asin;
+
+    if (!question.trim() || !productId) {
       return;
     }
 
@@ -37,7 +40,7 @@ const ChatTab: React.FC = () => {
     try {
       const response = await apiClient.askQuestion({
         session_id: sessionId,
-        product_id: productData.asin,
+        product_id: productId,
         question: userQuestion,
       });
 
@@ -242,8 +245,8 @@ const styles = {
     padding: '1rem',
     display: 'flex',
     flexDirection: 'column' as const,
-    height: '100%',
     flex: 1,
+    minHeight: 0,
   },
   emptyState: {
     textAlign: 'center' as const,
@@ -279,9 +282,9 @@ const styles = {
     backgroundColor: 'white',
     borderRadius: '8px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column' as const,
+    minHeight: 0,
   },
   placeholder: {
     padding: '3rem',
@@ -352,6 +355,10 @@ const styles = {
     display: 'flex',
     gap: '0.5rem',
     marginTop: '1rem',
+    flexShrink: 0,
+    padding: '0.5rem',
+    backgroundColor: '#f8f9fa',
+    borderRadius: '4px',
   },
   input: {
     flex: 1,

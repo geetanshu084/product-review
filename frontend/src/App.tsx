@@ -12,6 +12,7 @@ import ChatTab from './components/tabs/ChatTab';
 const AppContent: React.FC = () => {
   const { productData, analysis, isLoading, error } = useProduct();
   const [leftView, setLeftView] = useState<'analysis' | 'platform' | 'external' | 'summary'>('analysis');
+  const [showMobileChat, setShowMobileChat] = useState<boolean>(false);
 
   return (
     <>
@@ -49,21 +50,48 @@ const AppContent: React.FC = () => {
           background: rgba(0, 0, 0, 0.5);
         }
 
-        @media (max-width: 1024px) {
+        /* Mobile chat animations */
+        @keyframes slideUp {
+          from {
+            transform: translateY(100%);
+          }
+          to {
+            transform: translateY(0);
+          }
+        }
+
+        .mobile-chat-button:hover {
+          transform: scale(1.1);
+          box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+        }
+
+        .mobile-chat-button:active {
+          transform: scale(0.95);
+        }
+
+        @media (max-width: 768px) {
           .two-column-layout {
             grid-template-columns: 1fr !important;
           }
-          .sticky-chat {
-            position: relative !important;
-            height: 600px !important;
-            max-height: 600px !important;
+
+          .desktop-chat-column {
+            display: none !important;
           }
-        }
-        @media (max-width: 768px) {
+
+          .mobile-chat-button {
+            display: flex !important;
+          }
+
           .header-container {
             flex-direction: column !important;
             align-items: stretch !important;
             gap: 1rem !important;
+          }
+        }
+
+        @media (min-width: 769px) and (max-width: 1024px) {
+          .two-column-layout {
+            grid-template-columns: 6fr 4fr !important;
           }
         }
       `}</style>
@@ -145,11 +173,37 @@ const AppContent: React.FC = () => {
                 </div>
               </div>
 
-              {/* Right Column - Chat (Sticky) */}
-              <div style={styles.rightColumn}>
+              {/* Right Column - Chat (Sticky) - Desktop Only */}
+              <div className="desktop-chat-column" style={styles.rightColumn}>
                 <div className="sticky-chat" style={styles.stickyChat}>
                   <ChatTab />
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Chat Button - Shows only on mobile */}
+          {productData && analysis && !showMobileChat && (
+            <button
+              onClick={() => setShowMobileChat(true)}
+              style={styles.mobileChatButton}
+              className="mobile-chat-button"
+            >
+              💬
+            </button>
+          )}
+
+          {/* Mobile Chat Overlay - Slides in from bottom */}
+          {showMobileChat && productData && (
+            <div style={styles.mobileChatOverlay} className="mobile-chat-overlay">
+              <div style={styles.mobileChatHeader}>
+                <button onClick={() => setShowMobileChat(false)} style={styles.backButton}>
+                  ← Back
+                </button>
+                <h3 style={styles.mobileChatTitle}>Chat</h3>
+              </div>
+              <div style={styles.mobileChatContent}>
+                <ChatTab />
               </div>
             </div>
           )}
@@ -321,19 +375,20 @@ const styles = {
     minWidth: 0,
     minHeight: 0,
     boxSizing: 'border-box' as const,
-    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column' as const,
   },
   stickyChat: {
     position: 'relative' as const,
     backgroundColor: 'white',
     borderRadius: '8px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-    height: '100%',
+    flex: 1,
     display: 'flex',
     flexDirection: 'column' as const,
-    overflow: 'hidden',
     width: '100%',
     minWidth: 0,
+    minHeight: 0,
     boxSizing: 'border-box' as const,
   },
   welcomeMessage: {
@@ -357,6 +412,67 @@ const styles = {
   featureIcon: {
     fontSize: '3rem',
     marginBottom: '1rem',
+  },
+  mobileChatButton: {
+    position: 'fixed' as const,
+    bottom: '2rem',
+    right: '2rem',
+    width: '60px',
+    height: '60px',
+    borderRadius: '50%',
+    backgroundColor: '#ff9900',
+    color: 'white',
+    border: 'none',
+    fontSize: '1.5rem',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+    cursor: 'pointer',
+    zIndex: 1000,
+    display: 'none',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'transform 0.2s, box-shadow 0.2s',
+  },
+  mobileChatOverlay: {
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'white',
+    zIndex: 1001,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    animation: 'slideUp 0.3s ease-out',
+  },
+  mobileChatHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+    padding: '1rem',
+    backgroundColor: '#232f3e',
+    color: 'white',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+  },
+  backButton: {
+    backgroundColor: 'transparent',
+    color: 'white',
+    border: 'none',
+    fontSize: '1rem',
+    cursor: 'pointer',
+    padding: '0.5rem',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  mobileChatTitle: {
+    margin: 0,
+    fontSize: '1.25rem',
+    flex: 1,
+  },
+  mobileChatContent: {
+    flex: 1,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column' as const,
   },
   footer: {
     backgroundColor: '#232f3e',

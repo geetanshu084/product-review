@@ -4,14 +4,13 @@ Test script to verify Amazon scraper functionality
 Run this to test if scraping is working correctly
 """
 
-from src.scraper import AmazonScraper
+from src.scrapers import ScraperFactory
 
 def test_scraper():
     """Test the scraper with a sample product"""
-    scraper = AmazonScraper()
-
     # Use a popular product that definitely has reviews
     test_url = "https://www.amazon.in/Native-Purifier-RO-Copper-Alkaline/dp/B0D7HG2GZD/ref=cm_cr_arp_d_product_top?ie=UTF8&th=1"
+    scraper = ScraperFactory.get_scraper(test_url)
 
     print("=" * 60)
     print("Testing Amazon Scraper")

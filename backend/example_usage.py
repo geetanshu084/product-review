@@ -6,7 +6,7 @@ This script demonstrates how to use the scraper, analyzer, and chatbot programma
 
 import os
 from dotenv import load_dotenv
-from src.scraper import AmazonScraper
+from src.scrapers import ScraperFactory
 from src.analyzer import ProductAnalyzer
 from src.chatbot import ProductChatbot
 
@@ -20,13 +20,13 @@ def example_scraping():
     print("EXAMPLE 1: Scraping Amazon Product")
     print("=" * 60)
 
-    # Initialize scraper
-    scraper = AmazonScraper()
-
     # Example Amazon product URL
     url = "https://www.amazon.com/dp/B08N5WRWNW"  # Example: PlayStation 5
 
     print(f"\nScraping product from: {url}")
+
+    # Initialize scraper using factory pattern
+    scraper = ScraperFactory.get_scraper(url)
 
     try:
         # Scrape product data

@@ -77,7 +77,7 @@ class ProductOrchestrator:
     7. Return both structured data and analysis
     """
 
-    def __init__(self, redis_client=None):
+    def __init__(self):
         """
         Initialize orchestrator
 
@@ -85,11 +85,10 @@ class ProductOrchestrator:
         - LLM_PROVIDER: LLM provider to use (default: google)
         - LLM_MODEL: Model name (optional)
         - GOOGLE_API_KEY (or provider-specific key): For LLM operations
-
-        Args:
-            redis_client: Redis client for caching (optional)
+        - REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD: For Redis caching
         """
-        self.redis_client = redis_client
+        from src.redis_manager import get_redis_client
+        self.redis_client = get_redis_client()
 
         # Initialize LLM for structured extraction
         self.extraction_llm = get_llm(temperature=0.1)  # Low temp for factual extraction

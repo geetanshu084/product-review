@@ -6,7 +6,7 @@ Tests scraping + LLM analysis
 
 import os
 from dotenv import load_dotenv
-from src.scraper import AmazonScraper
+from src.scrapers import ScraperFactory
 from src.analyzer import ProductAnalyzer
 
 # Load environment variables
@@ -34,7 +34,7 @@ def test_complete_workflow():
 
     # Step 2: Scrape product
     print("\nStep 2: Scraping product data...")
-    scraper = AmazonScraper()
+    scraper = ScraperFactory.get_scraper(test_url)
 
     try:
         product_data = scraper.scrape_product(test_url)

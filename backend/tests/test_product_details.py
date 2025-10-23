@@ -4,7 +4,7 @@ Test script to verify comprehensive product data scraping
 """
 
 import json
-from src.scraper import AmazonScraper
+from src.scrapers import ScraperFactory
 
 def test_product_details():
     """Test comprehensive product details scraping"""
@@ -19,7 +19,7 @@ def test_product_details():
 
     # Scrape product
     print("Scraping product data...")
-    scraper = AmazonScraper()
+    scraper = ScraperFactory.get_scraper(test_url)
 
     try:
         product_data = scraper.scrape_product(test_url)

@@ -85,7 +85,8 @@ export interface WebSearchAnalysis {
 }
 
 export interface ProductData {
-  asin: string;
+  product_id: string; // Generic product ID (ASIN for Amazon, FSN for Flipkart)
+  asin?: string; // Amazon-specific ASIN (for backward compatibility)
   title: string;
   platform?: string; // e.g., 'Amazon', 'Flipkart'
   brand?: string;

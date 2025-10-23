@@ -5,7 +5,7 @@ Test script to verify Redis caching functionality
 
 import time
 from dotenv import load_dotenv
-from src.scraper import AmazonScraper
+from src.scrapers import ScraperFactory
 
 load_dotenv()
 
@@ -18,8 +18,8 @@ def test_caching():
 
     test_url = "https://www.amazon.in/Native-Purifier-RO-Copper-Alkaline/dp/B0D7HG2GZD"
 
-    # Initialize scraper with caching enabled
-    scraper = AmazonScraper(use_cache=True, use_llm_extraction=True)
+    # Initialize scraper (caching and LLM extraction are always enabled)
+    scraper = ScraperFactory.get_scraper(test_url)
 
     print("\n--- FIRST SCRAPE (will fetch from Amazon) ---")
     start = time.time()

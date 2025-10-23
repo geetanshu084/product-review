@@ -28,8 +28,6 @@ class ProductWorkflowState(TypedDict):
     # Input (these never change after initialization)
     url: str
     asin: Optional[str]
-    include_price_comparison: bool
-    include_web_search: bool
 
     # Outputs from parallel nodes - using Annotated to allow concurrent updates
     amazon_data: Optional[Dict]
@@ -76,30 +74,21 @@ class ProductWorkflowOrchestrator:
     - Analysis: product:{asin}:analysis or flipkart:{fsn}:analysis
     """
 
-    def __init__(
-        self,
-        google_api_key: str,
-        serper_api_key: Optional[str] = None,
-        redis_client=None
-    ):
+    def __init__(self):
         """
         Initialize the workflow orchestrator
 
         All configuration is read from environment variables:
-        - LLM_PROVIDER, LLM_MODEL, GOOGLE_API_KEY (or provider key): For LLM operations
+        - LLM_PROVIDER, LLM_MODEL, and corresponding provider API key: For LLM operations
         - SERPER_API_KEY: For price comparison and web search
         - REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD: For Redis caching
-
-        Args:
-            google_api_key: Google API key for Gemini LLM (deprecated, kept for backward compatibility)
-            serper_api_key: Serper API key for price/web search (deprecated, kept for backward compatibility)
-            redis_client: Redis client for caching (optional, will use centralized client if not provided)
         """
-        self.google_api_key = google_api_key
-        self.serper_api_key = serper_api_key
+        # Get centralized Redis client from utility function
+        self.redis_client = get_redis_client()
 
-        # Use provided redis_client or get centralized one
-        self.redis_client = redis_client if redis_client is not None else get_redis_client()
+        # Get SERPER_API_KEY from environment
+        import os
+        serper_api_key = os.getenv("SERPER_API_KEY")
 
         # Scraper factory will select appropriate scraper based on URL
         # No need to initialize scraper here - will be created on-demand per URL
@@ -110,8 +99,9 @@ class ProductWorkflowOrchestrator:
             self.price_comparer = SerperPriceComparison()
 
         self.web_search_analyzer = None
-        if serper_api_key and google_api_key:
-            # WebSearchAnalyzer reads both keys from environment
+        if serper_api_key:
+            # WebSearchAnalyzer uses LLM factory pattern internally
+            # It will use whatever LLM provider is configured
             self.web_search_analyzer = WebSearchAnalyzer()
 
         # Build the workflow graph
@@ -192,14 +182,14 @@ class ProductWorkflowOrchestrator:
             if cached_json:
                 cached_data = json.loads(cached_json)
 
-                # Check if cached data has all requested components
+                # Check if cached data has all requested components based on available services
                 has_price_comp = "price_comparison" in cached_data or "competitor_prices" in cached_data
                 has_web_search = "web_search_analysis" in cached_data
 
                 cache_complete = True
-                if state.get("include_price_comparison", False) and not has_price_comp:
+                if self.price_comparer and not has_price_comp:
                     cache_complete = False
-                if state.get("include_web_search", False) and not has_web_search:
+                if self.web_search_analyzer and not has_web_search:
                     cache_complete = False
 
                 if cache_complete:
@@ -264,9 +254,9 @@ class ProductWorkflowOrchestrator:
     def _price_comparison_node(self, state: ProductWorkflowState) -> Dict:
         """Get price comparison data (runs in parallel with web search)"""
 
-        # Skip if not requested or no scraper available
-        if not state.get("include_price_comparison", False) or not self.price_comparer:
-            print("\n💰 Price comparison skipped (not enabled or no API key)")
+        # Skip if price comparer not available (no API key was set during initialization)
+        if not self.price_comparer:
+            print("\n💰 Price comparison skipped (no API key)")
             return {"price_comparison_complete": True}
 
         # Wait for Amazon data
@@ -303,9 +293,9 @@ class ProductWorkflowOrchestrator:
     def _web_search_node(self, state: ProductWorkflowState) -> Dict:
         """Get web search data (runs in parallel with price comparison)"""
 
-        # Skip if not requested or no analyzer available
-        if not state.get("include_web_search", False) or not self.web_search_analyzer:
-            print("\n🌐 Web search skipped (not enabled or no API key)")
+        # Skip if web search analyzer not available (no API key was set during initialization)
+        if not self.web_search_analyzer:
+            print("\n🌐 Web search skipped (no API key)")
             return {"web_search_complete": True}
 
         # Wait for Amazon data
@@ -357,7 +347,7 @@ class ProductWorkflowOrchestrator:
             # Also prepare competitor_prices for easy frontend access
             from src.product_orchestrator import ProductOrchestrator
             # Use the existing helper to format competitor prices
-            orchestrator = ProductOrchestrator(redis_client=self.redis_client)
+            orchestrator = ProductOrchestrator()
             competitor_prices = orchestrator._prepare_competitor_prices(state["price_comparison_data"])
             product_data["competitor_prices"] = competitor_prices
             print(f"  ✓ Added {len(competitor_prices)} competitor prices")
@@ -421,7 +411,7 @@ class ProductWorkflowOrchestrator:
             from src.product_orchestrator import ProductOrchestrator
 
             # Create orchestrator instance
-            orchestrator = ProductOrchestrator(redis_client=self.redis_client)
+            orchestrator = ProductOrchestrator()
 
             # Run analysis on the combined product data
             result = orchestrator.process_product_sync(
@@ -459,36 +449,31 @@ class ProductWorkflowOrchestrator:
         state["analysis_complete"] = True
         return state
 
-    def run(
-        self,
-        url: str,
-        include_price_comparison: bool = True,
-        include_web_search: bool = True
-    ) -> Dict:
+    def run(self, url: str) -> Dict:
         """
         Run the complete workflow
 
         Args:
-            url: Amazon product URL
-            include_price_comparison: Whether to include price comparison
-            include_web_search: Whether to include web search
+            url: Product URL (Amazon, Flipkart, etc.)
 
         Returns:
             Complete product data with all requested components
+
+        Note:
+            Price comparison and web search are automatically enabled
+            if SERPER_API_KEY is set in environment variables.
         """
         print(f"\n{'='*60}")
         print("🚀 Starting Product Data Collection Workflow")
         print(f"{'='*60}")
         print(f"URL: {url}")
-        print(f"Price Comparison: {'✓' if include_price_comparison else '✗'}")
-        print(f"Web Search: {'✓' if include_web_search else '✗'}")
+        print(f"Price Comparison: {'✓' if self.price_comparer else '✗'}")
+        print(f"Web Search: {'✓' if self.web_search_analyzer else '✗'}")
 
         # Initialize state
         initial_state = ProductWorkflowState(
             url=url,
             asin=None,
-            include_price_comparison=include_price_comparison,
-            include_web_search=include_web_search,
             amazon_data=None,
             price_comparison_data=None,
             web_search_data=None,
@@ -514,17 +499,11 @@ class ProductWorkflowOrchestrator:
                 for error in final_state["errors"]:
                     print(f"  - {error}")
 
-            # Determine cache status
-            was_cached = final_state.get("product_data") and not final_state.get("amazon_data")
-            analysis_cached = was_cached and final_state.get("analysis_complete") and final_state.get("analysis")
-
             return {
                 "success": True,
                 "data": final_state.get("product_data", {}),
                 "analysis": final_state.get("analysis", ""),
-                "errors": final_state.get("errors", []),
-                "cached": was_cached,
-                "analysis_cached": analysis_cached
+                "errors": final_state.get("errors", [])
             }
 
         except Exception as e:

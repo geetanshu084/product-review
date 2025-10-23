@@ -46,11 +46,7 @@ async def scrape_and_analyze_product(request: ScrapeRequest):
         url = str(request.url)
 
         # Run unified LangGraph workflow (parallel execution + analysis)
-        result = product_service.scrape_and_analyze_unified(
-            url=url,
-            include_price_comparison=request.include_price_comparison,
-            include_web_search=request.include_web_search
-        )
+        result = product_service.scrape_and_analyze_unified(url=url)
 
         structured_data = result.get('structured_data', {})
         analysis = result.get('analysis', '')

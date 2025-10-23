@@ -80,8 +80,6 @@ class ScrapeRequest(BaseModel):
     """Request to scrape a product"""
     url: HttpUrl
     session_id: Optional[str] = None
-    include_price_comparison: bool = True
-    include_web_search: bool = True
 
 
 class ChatRequest(BaseModel):
