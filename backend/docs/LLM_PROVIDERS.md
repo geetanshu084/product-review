@@ -50,7 +50,7 @@ Set the corresponding API key for your chosen provider.
 2. Add to `.env`:
    ```bash
    LLM_PROVIDER=google
-   LLM_MODEL=gemini-2.0-flash-exp  # or gemini-2.5-flash, gemini-1.5-pro
+   LLM_MODEL=gemini-2.5-flash  # or gemini-2.5-flash, gemini-1.5-pro
    GOOGLE_API_KEY=your_api_key_here
    ```
 
@@ -262,12 +262,6 @@ No code changes needed!
 ### Check Current Configuration
 
 The LLM provider is automatically initialized when you start the backend. Check the startup logs:
-
-```bash
-python -m api.main
-# Look for: "✓ Redis client initialized"
-# Look for: "✓ LangGraph workflow orchestrator initialized"
-```
 
 ### Test the Chatbot
 

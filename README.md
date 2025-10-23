@@ -90,11 +90,11 @@ See [Frontend README](frontend/README.md#setup) for complete setup guide.
 **3. Access the Application**
 - Backend API: http://localhost:8000
 - API Documentation: http://localhost:8000/api/v1/docs
-- Frontend UI: http://localhost:5002
+- Frontend UI: http://localhost:3000
 
 ### Usage
 
-1. Open http://localhost:5002 in your browser
+1. Open http://localhost:3000 in your browser
 2. Paste an Amazon or Flipkart product URL
 3. Click "Analyze Product"
 4. View comprehensive analysis, reviews, and pricing
