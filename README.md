@@ -10,7 +10,7 @@ An AI-powered product analysis platform that scrapes e-commerce product data fro
 - **Price Comparison**: Find best deals across multiple platforms
 - **Web Search Integration**: External reviews, Reddit discussions, and news aggregation
 - **Interactive Chat**: Ask questions about products using LangChain-powered Q&A
-- **Redis Caching**: Fast data retrieval with 24-hour cache
+- **Intelligent Caching**: Dual-layer Redis caching (product data + analysis) with 24-hour TTL
 - **Rich UI**: Modern React TypeScript interface with real-time updates
 
 ### Analysis Components
@@ -106,7 +106,15 @@ See [Frontend README](frontend/README.md#setup) for complete setup guide.
 The system automatically detects the platform (Amazon/Flipkart) and uses the appropriate scraper with platform-specific selectors and LLM enhancement.
 
 ### Intelligent Caching
-Redis caching prevents re-scraping the same product within 24 hours, significantly improving performance.
+Dual-layer Redis caching system with 24-hour TTL:
+- **Product Data Cache**: Stores scraped product information, price comparison, and external reviews
+- **Analysis Cache**: Stores LLM-generated analysis separately to avoid redundant AI calls
+- **Performance**: First request ~30-60 seconds (full scraping + analysis), subsequent requests <1 second (from cache)
+- **Cache Keys**: `product:{id}` for data, `product:{id}:analysis` for analysis
+- **Three-Tier Routing**:
+  - Fully cached: Returns instantly with no scraping or LLM calls
+  - Data cached: Skips scraping, runs LLM analysis only
+  - Not cached: Full pipeline (scrape → analyze → cache)
 
 ### LLM-Powered Analysis
 - Uses Google Gemini (configurable to other providers)
@@ -124,10 +132,72 @@ Aggregates external reviews, comparison articles, Reddit discussions, and news a
 ### Interactive Chat
 LangChain-powered Q&A allows users to ask specific questions about the product with context-aware responses.
 
+## Architecture
+
+### LangGraph Workflow with Intelligent Caching
+
+The application uses LangGraph for workflow orchestration with a three-tier caching strategy:
+
+```
+Request → Check Cache → Route Based on Cache Status
+                    ↓
+            ┌───────┴───────┬─────────────┐
+            │               │             │
+        Fully Cached   Data Cached    Not Cached
+            │               │             │
+            ↓               ↓             ↓
+    Return Instantly  Run LLM Only   Full Pipeline
+    (<1 second)      (~10-15 sec)   (~30-60 sec)
+                                           │
+                                           ↓
+                                    ┌──────────────┐
+                                    │   Scraping   │
+                                    └──────┬───────┘
+                                           │
+                        ┌──────────────────┴──────────────────┐
+                        ↓                                      ↓
+                 ┌─────────────┐                      ┌──────────────┐
+                 │Price Compare│ (Parallel)           │ Web Search   │
+                 └──────┬──────┘                      └──────┬───────┘
+                        │                                    │
+                        └──────────────┬─────────────────────┘
+                                       ↓
+                              ┌────────────────┐
+                              │ Combine Results│
+                              └────────┬───────┘
+                                       ↓
+                              ┌────────────────┐
+                              │ Cache Product  │ → product:{id}
+                              │      Data      │
+                              └────────┬───────┘
+                                       ↓
+                              ┌────────────────┐
+                              │  LLM Analysis  │
+                              └────────┬───────┘
+                                       ↓
+                              ┌────────────────┐
+                              │Cache Analysis  │ → product:{id}:analysis
+                              └────────┬───────┘
+                                       ↓
+                              ┌────────────────┐
+                              │  Return Result │
+                              └────────────────┘
+```
+
+**Key Benefits:**
+- **Eliminates Redundant LLM Calls**: Analysis cached separately from data
+- **Parallel Execution**: Price comparison and web search run simultaneously
+- **Cost Optimization**: Reduces API calls to Serper and LLM providers
+- **Improved Performance**: 30-60x faster for cached requests
+
 ## API Endpoints
 
 ### Products
-- `POST /api/v1/products/scrape-and-analyze` - Scrape and analyze product
+- `POST /api/v1/products/scrape-and-analyze` - Scrape and analyze product with intelligent caching
+  - Checks cache for both product data and analysis
+  - Returns instantly if fully cached (<1s)
+  - Runs LLM analysis only if data is cached but analysis is not
+  - Runs full pipeline if nothing is cached
 - `GET /api/v1/products/{product_id}` - Get cached product data
 
 ### Chat
