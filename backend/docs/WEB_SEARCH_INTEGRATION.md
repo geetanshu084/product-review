@@ -1,7 +1,7 @@
 # Web Search Integration for External Reviews
 
 ## Overview
-Phase 2 feature that uses Serper API and Gemini LLM to analyze external product reviews, comparisons, and discussions from across the web.
+Uses Serper API and Gemini LLM to analyze external product reviews, comparisons, discussions, and news from across the web. Automatically filters out results from the source platform (Amazon/Flipkart) and uses AI to remove irrelevant content.
 
 ## Features Implemented
 
@@ -13,19 +13,26 @@ Complete analyzer for finding and processing external product information.
 - **Comparisons**: "Product vs alternatives" articles
 - **Issues & Problems**: Complaints, defects, common issues
 - **Reddit Discussions**: Community opinions and experiences
+- **News Articles**: Latest news, updates, and announcements about the product
 - **YouTube Videos**: Video reviews automatically detected
 
-**AI-Powered Analysis:**
+**AI-Powered Features:**
+- **Source Platform Filtering**: Automatically excludes results from Amazon/Flipkart (the platform being analyzed)
+- **Relevance Filtering**: LLM filters out irrelevant content (different products, unrelated articles)
 - **Key Findings**: Gemini summarizes 5-10 important points from all sources
 - **Red Flag Detection**: Identifies recalls, defects, scams, or safety concerns
 - **Sentiment Analysis**: Overall sentiment (positive/negative/mixed) from external sources
 
-### 2. Integration with ProductAnalyzer
-Web search is automatically enabled when `SERPER_API_KEY` is set in environment:
+### 2. Integration with LangGraph Workflow
+Web search is integrated into the workflow orchestrator:
+- Runs in parallel with price comparison after product scraping
+- Automatically receives source platform (Amazon/Flipkart) to filter out
+- Results combined with product data before LLM analysis
+- Cached in Redis along with product data (24-hour TTL)
 
 ```python
 # Web search enabled automatically if SERPER_API_KEY exists in .env
-analyzer = ProductAnalyzer()
+# Runs as part of unified workflow via /api/v1/products/scrape-and-analyze endpoint
 ```
 
 ### 3. Data Storage
@@ -33,18 +40,21 @@ Web search data is automatically added to `product_data` and saved to Redis:
 
 ```python
 product_data['web_search_analysis'] = {
-    'external_reviews': [...],
-    'comparison_articles': [...],
-    'issue_discussions': [...],
-    'reddit_discussions': [...],
-    'video_reviews': [...],
-    'key_findings': [...],
-    'red_flags': [...],
-    'overall_sentiment': 'positive|negative|mixed',
+    'external_reviews': [...],      # Filtered by LLM for relevance
+    'comparison_articles': [...],   # Filtered by LLM for relevance
+    'issue_discussions': [...],     # Raw issue discussions
+    'reddit_discussions': [...],    # Filtered by LLM for relevance
+    'news_articles': [...],         # Filtered by LLM for relevance
+    'video_reviews': [...],         # YouTube videos
+    'key_findings': [...],          # LLM-generated insights
+    'red_flags': [...],             # LLM-detected warnings
+    'overall_sentiment': {...},     # LLM sentiment analysis
     'total_sources': 40,
     'metadata': {...}
 }
 ```
+
+**Note:** Source platform URLs (e.g., Amazon.in, Flipkart.com) are automatically excluded from all sections.
 
 ## Technical Implementation
 
@@ -66,14 +76,20 @@ Body:
 
 ### Search Queries Per Product
 
-For each product, 4 different queries are executed:
+For each product, 5 different queries are executed:
 
-1. `"{product_name} review"`
-2. `"{product_name} vs alternatives comparison"`
-3. `"{product_name} problems issues complaints"`
-4. `"{product_name} worth it reddit"`
+1. `"{product_name} review"` - Professional reviews
+2. `"{product_name} vs alternatives comparison"` - Comparison articles
+3. `"{product_name} problems issues complaints"` - Problem discussions
+4. `"{product_name} worth it reddit"` - Reddit discussions
+5. `"{product_name} news"` - Latest news articles
 
-Total: **~40 search results** per product (10 per query)
+Total: **~50 search results** per product (10 per query)
+
+**Filtering Pipeline:**
+1. Source platform URLs filtered out (e.g., Amazon.in if analyzing Amazon product)
+2. LLM filters irrelevant content (different products, unrelated articles)
+3. Final results typically reduced to 10-20 highly relevant sources
 
 ### LLM Processing
 
@@ -94,162 +110,73 @@ Returns: List of serious warnings or empty if none found
 Analyzes all results → Returns: positive/negative/mixed
 ```
 
-## Usage
 
-### Basic Usage
+### In Web UI (React Frontend)
 
-```python
-from src.analysis.web_search import WebSearchAnalyzer
+Web search runs automatically as part of the unified workflow:
 
-# Initialize (reads SERPER_API_KEY and GOOGLE_API_KEY from environment)
-analyzer = WebSearchAnalyzer()
+1. User enters product URL (Amazon/Flipkart)
+2. Workflow orchestrator executes in parallel:
+   - Product scraping
+   - Price comparison (parallel with web search)
+   - **Web search analysis** (parallel with price comparison)
+3. Results combined and saved to Redis (24-hour TTL)
+4. LLM analysis runs on combined data
+5. Results displayed in UI across multiple tabs:
+   - **External tab**: Reviews, comparisons, news, Reddit discussions
+   - **Summary tab**: Key findings, red flags, sentiment analysis
 
-# Analyze product
-results = analyzer.analyze_product("Apple iPhone 15 Pro")
+**API Endpoint:** `POST /api/v1/products/scrape-and-analyze`
 
-print(f"Total sources: {results['total_sources']}")
-print(f"Key findings: {results['key_findings']}")
-print(f"Red flags: {results['red_flags']}")
-print(f"Sentiment: {results['overall_sentiment']}")
-```
-
-### With ProductAnalyzer
-
-```python
-from src.analyzer import ProductAnalyzer
-
-# Initialize analyzer (reads configuration from environment variables)
-analyzer = ProductAnalyzer()
-
-# Analyze product (includes web search automatically)
-analysis = analyzer.analyze_product(product_data)
-
-# Web search data is added to product_data
-web_data = product_data['web_search_analysis']
-```
-
-### In Streamlit App
-
-Web search runs automatically when analyzing a product:
-
-1. User enters Amazon URL
-2. Scraper fetches product data
-3. Analyzer runs:
-   - Price comparison
-   - **Web search analysis** (new)
-   - LLM analysis
-4. Updated data saved to Redis
-5. Results displayed in UI
-
-## Data Flow
+## Data Flow (LangGraph Workflow)
 
 ```
 ┌─────────────────┐
-│  Scrape Amazon  │
-│   Product Data  │
+│  Check Cache    │
+│ (Redis Lookup)  │
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
-│ Price Comparison│
-│  (Serper API)   │
+│ Scrape Product  │
+│ (Amazon/Flipkart│
 └────────┬────────┘
          │
-         ▼
-┌─────────────────┐
-│  Web Search     │◄─── Serper Search API
-│   Analysis      │◄─── Gemini LLM
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Save to Redis  │
-│ product:{asin}  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Chatbot Q&A    │
-│ Access via ASIN │
-└─────────────────┘
+         ├──────────────────┐
+         │                  │
+         ▼                  ▼
+┌─────────────────┐  ┌─────────────────┐
+│ Price Comparison│  │  Web Search     │◄─── 5 Search Queries
+│  (Serper API)   │  │   Analysis      │◄─── Platform Filtering
+└────────┬────────┘  └────────┬────────┘◄─── LLM Filtering
+         │                  │                ◄─── Gemini LLM
+         │                  │
+         └──────────┬───────┘
+                    ▼
+         ┌─────────────────┐
+         │ Combine Results │
+         └────────┬────────┘
+                  │
+                  ▼
+         ┌─────────────────┐
+         │  Save to Redis  │
+         │ product:{id}    │◄─── 24h TTL
+         └────────┬────────┘
+                  │
+                  ▼
+         ┌─────────────────┐
+         │  LLM Analysis   │◄─── Gemini LLM
+         │ & Cache Result  │◄─── 24h TTL
+         └────────┬────────┘
+                  │
+                  ▼
+         ┌─────────────────┐
+         │  Return to UI   │
+         └─────────────────┘
 ```
 
-## Output Structure
+**Parallel Execution:** Price comparison and web search run simultaneously after scraping.
 
-### Complete Web Search Analysis
-
-```json
-{
-  "external_reviews": [
-    {
-      "source": "techradar.com",
-      "url": "https://...",
-      "title": "iPhone 15 Pro Review",
-      "snippet": "Impressive camera, powerful chip...",
-      "date": "2 days ago",
-      "category": "review"
-    }
-  ],
-  "comparison_articles": [
-    {
-      "source": "gsmarena.com",
-      "url": "https://...",
-      "title": "iPhone 15 Pro vs Samsung S24 Ultra",
-      "snippet": "Detailed comparison...",
-      "date": "1 week ago",
-      "category": "comparison"
-    }
-  ],
-  "issue_discussions": [
-    {
-      "source": "macrumors.com",
-      "url": "https://...",
-      "title": "iPhone 15 Pro overheating issues",
-      "snippet": "Some users report...",
-      "date": "3 days ago",
-      "category": "issue"
-    }
-  ],
-  "reddit_discussions": [
-    {
-      "source": "reddit.com",
-      "url": "https://...",
-      "title": "Is iPhone 15 Pro worth it?",
-      "snippet": "Reddit discussion...",
-      "date": "5 days ago",
-      "category": "reddit"
-    }
-  ],
-  "video_reviews": [
-    {
-      "title": "iPhone 15 Pro Full Review",
-      "url": "https://youtube.com/...",
-      "channel": "Marques Brownlee",
-      "snippet": "Comprehensive video review..."
-    }
-  ],
-  "key_findings": [
-    "Camera system praised for low-light performance",
-    "Titanium build feels premium but shows fingerprints",
-    "A17 Pro chip delivers excellent gaming performance",
-    "Battery life criticized for heavy usage",
-    "USB-C port is a welcome change"
-  ],
-  "red_flags": [
-    "Overheating reported during intensive tasks",
-    "Some units have display tinting issues"
-  ],
-  "overall_sentiment": "mixed",
-  "total_sources": 38,
-  "metadata": {
-    "review_count": 10,
-    "comparison_count": 9,
-    "issue_count": 10,
-    "reddit_count": 9,
-    "video_count": 4
-  }
-}
-```
 
 ## Testing
 
@@ -364,14 +291,18 @@ ProductAnalyzer Integration: ✅ PASSED
 
 ### Serper API
 - **Free tier**: 2,500 searches/month
-- **Usage per product**: 4 searches (4 different queries)
-- **Capacity**: ~625 products/month on free tier
+- **Usage per product**: 5 searches (reviews, comparisons, issues, reddit, news)
+- **Capacity**: ~500 products/month on free tier
 - **Upgrade**: $50/month for 10,000 searches
+- **Note**: Results cached in Redis for 24 hours - subsequent requests use cache
 
 ### Gemini API
 - **Free tier**: 60 requests/minute
-- **Usage per product**: 3 requests (key findings, red flags, sentiment)
+- **Usage per product**: ~7-8 requests
+  - 4 relevance filtering calls (reviews, comparisons, reddit, news)
+  - 3 insight generation calls (key findings, red flags, sentiment)
 - **Capacity**: Unlimited on free tier (rate limited)
+- **Note**: Analysis results cached in Redis for 24 hours
 
 ## Configuration
 
@@ -383,66 +314,69 @@ GOOGLE_API_KEY=your_gemini_api_key
 SERPER_API_KEY=your_serper_api_key
 ```
 
-### Enable/Disable Features
-
-```python
-# Both price comparison and web search are automatically enabled if SERPER_API_KEY exists
-analyzer = ProductAnalyzer()
-
-# To disable web search, simply don't set SERPER_API_KEY in your .env file
-
-# Per-analysis control
-analysis = analyzer.analyze_product(
-    product_data,
-    include_price_comparison=True,
-    include_web_search=True
-)
-```
-
 ## Performance
 
-### Timing
-- **Web Search API calls**: ~2-3 seconds (4 queries)
-- **LLM Processing**: ~10-15 seconds (3 analyses)
-- **Total**: ~15-20 seconds per product
+### Timing (First Request)
+- **Web Search API calls**: ~3-5 seconds (5 queries)
+- **Source Platform Filtering**: <1 second
+- **LLM Relevance Filtering**: ~5-8 seconds (4 filtering calls)
+- **LLM Insight Generation**: ~5-10 seconds (3 generation calls)
+- **Total**: ~15-25 seconds per product
+
+### Timing (Cached Request)
+- **Cache Lookup**: <100ms
+- **Total**: <1 second (from Redis cache)
 
 ### Optimization Tips
-1. Enable caching for repeated products
-2. Use async processing for multiple products
-3. Reduce `num_results` parameter if speed is critical
-4. Cache LLM summaries in Redis
+1. **Automatic Caching**: Results cached in Redis for 24 hours
+2. **Parallel Execution**: Runs in parallel with price comparison
+3. **Smart Filtering**: LLM removes irrelevant content before analysis
+4. **Disable if not needed**: Set `include_web_search=False` in API request
 
 ## Benefits
 
 ### For Buyers
-- **Comprehensive View**: See what experts and users say beyond Amazon
+- **Comprehensive View**: See what experts and users say beyond the source platform
 - **Red Flag Detection**: Avoid products with known issues
 - **Real Opinions**: Reddit discussions provide honest feedback
+- **Latest News**: Stay updated with product announcements and updates
 - **Video Reviews**: Visual demonstrations from YouTube
+- **Clean Results**: Only relevant content (irrelevant articles filtered out by AI)
 
 ### For Analysis Quality
-- **External Validation**: Verify Amazon reviews with independent sources
-- **Sentiment Cross-Check**: Compare Amazon sentiment with external sentiment
-- **Issue Discovery**: Find problems not mentioned in Amazon reviews
+- **External Validation**: Verify platform reviews with independent sources
+- **Sentiment Cross-Check**: Compare platform sentiment with external sentiment
+- **Issue Discovery**: Find problems not mentioned in platform reviews
 - **Competitive Context**: See how product compares to alternatives
+- **Multi-Platform Support**: Works with Amazon, Flipkart, and other e-commerce platforms
+- **Source Independence**: Automatically excludes results from the platform being analyzed
 
 ## Limitations
 
 1. **Search Quality**: Depends on Serper API and Google's index
-2. **Rate Limits**: Free tier limits (2,500 searches/month)
-3. **Response Time**: Adds 15-20 seconds to analysis
-4. **Relevance**: Search results may include outdated or irrelevant content
+2. **Rate Limits**: Free tier limits (2,500 searches/month, ~500 products)
+3. **Response Time**: Adds 15-25 seconds to first request (cached requests <1s)
+4. **LLM Accuracy**: Relevance filtering may occasionally remove useful content
 5. **Language**: Primarily English results
+6. **Platform Coverage**: Some e-commerce platforms may not be recognized for filtering
 
-## Future Enhancements
+## Current Implementation Status
 
-Potential improvements:
-- **Multi-language support**: Search in local languages
-- **Custom filters**: Date range, specific sites, etc.
-- **Result caching**: Cache search results to reduce API calls
-- **Parallel processing**: Run searches concurrently
-- **Advanced NLP**: Extract specific features mentioned across sources
-- **Trend analysis**: Track sentiment changes over time
+**Implemented:**
+- ✅ Source platform filtering (Amazon, Flipkart, etc.)
+- ✅ LLM-powered relevance filtering
+- ✅ News articles search
+- ✅ Reddit subreddit extraction
+- ✅ 24-hour Redis caching (data + analysis)
+- ✅ Parallel execution with price comparison
+- ✅ LangGraph workflow integration
+
+**Future Enhancements:**
+- Multi-language support (search in local languages)
+- Custom date range filters
+- Advanced NLP (extract specific features mentioned across sources)
+- Trend analysis (track sentiment changes over time)
+- Video review transcription and analysis
 
 ## Troubleshooting
 

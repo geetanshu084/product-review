@@ -2,18 +2,20 @@
 
 ## Overview
 The Q&A chatbot includes two powerful features for answering product questions:
-1. **LLM-Driven Web Search**: Uses LangChain tools where the LLM intelligently decides when to search the internet for current information
-2. **Multi-Platform Price Comparison**: Provides price data from Amazon, Flipkart, eBay, Walmart, and other platforms stored in Redis
+1. **LLM-Driven Web Search**: Uses LangChain tool-calling agent where the LLM intelligently decides when to search the internet for current information
+2. **Multi-Platform Price Comparison**: Provides price data from Amazon, Flipkart, eBay, Walmart, and other platforms from cached product data
+3. **Multi-Provider LLM Support**: Configurable LLM provider (Google Gemini, OpenAI, Anthropic, etc.) via environment variables
 
 ## How It Works
 
 ### Price Comparison Data in Q&A
 
-When a product is analyzed, price comparison data is automatically:
-1. Fetched from multiple e-commerce platforms using Serper API
-2. Saved to Redis along with product data
-3. Made available to the Q&A chatbot
-4. Formatted and included in the LLM context
+When a product is analyzed via `/scrape-and-analyze` endpoint, price comparison data is automatically:
+1. Fetched from multiple e-commerce platforms using Serper API (runs in parallel with web search)
+2. Cached in Redis along with complete product data (24-hour TTL)
+3. Retrieved by chatbot using product_id
+4. Cleaned and formatted for LLM context (removes Google redirect URLs)
+5. Included in the chatbot's system prompt as structured data
 
 The chatbot can now answer questions like:
 - "Where can I buy this product?"
@@ -33,7 +35,7 @@ Bot: "According to the price comparison data, the best deal is on FLIPKART
 
 ### LLM-Driven Web Search (LangChain Tool Integration)
 
-The chatbot uses **LangChain's ReAct agent** with a web search tool. The LLM (Google Gemini) intelligently decides when to use the tool based on:
+The chatbot uses **LangChain's tool-calling agent** with a web search tool. The LLM intelligently decides when to use the tool based on:
 
 **The LLM uses web search when:**
 - Information is not available in the product data
@@ -90,44 +92,21 @@ Add your Serper API key to the `.env` file:
 SERPER_API_KEY=your_serper_api_key_here
 ```
 
-### 3. Enable Web Search
-Web search is enabled by default when SERPER_API_KEY is set in `.env`:
+### 3. Configure LLM Provider
+Add LLM provider configuration to `.env`:
 
-```python
-from src.chatbot import ProductChatbot
-
-# Initialize chatbot - reads all config from environment variables
-chatbot = ProductChatbot()
+```bash
+# LLM Configuration (defaults to Google Gemini)
+LLM_PROVIDER=google  # Options: google, openai, anthropic, ollama
+LLM_MODEL=gemini-2.0-flash-exp  # Model name for the provider
+GOOGLE_API_KEY=your_google_api_key_here
+# Or for other providers:
+# OPENAI_API_KEY=your_openai_key
+# ANTHROPIC_API_KEY=your_anthropic_key
 ```
 
-## Usage
-
-### Basic Usage
-
-```python
-from src.chatbot import ProductChatbot
-
-# Initialize chatbot - reads GOOGLE_API_KEY and SERPER_API_KEY from environment
-chatbot = ProductChatbot()
-
-# Set product data
-session_id = "user_session_123"
-chatbot.set_product_data(session_id, product_data)
-
-# Ask questions (web search will trigger automatically when needed)
-answer = chatbot.ask(session_id, "What is the current price?")
-print(answer)
-# Output: "According to current search results: ..."
-```
-
-### Disabling Web Search
-
-To disable web search:
-
-```python
-# Don't set SERPER_API_KEY in .env
-# Web search will automatically disable if no API key is found
-```
+### 4. Enable Web Search
+Web search is enabled automatically when SERPER_API_KEY is set in `.env`:
 
 ## Web Search Behavior
 
@@ -168,27 +147,37 @@ This will test:
 
 ### Complete Product Analysis to Q&A Flow
 
-1. **Product Analysis** (`app.py` → `analyzer.py`):
-   - Scrape Amazon product data
-   - Fetch price comparison from multiple platforms
-   - Save complete product data (including price comparison) to Redis
+1. **Product Analysis** (LangGraph Workflow via `/scrape-and-analyze`):
+   - Scrape product page (Amazon/Flipkart)
+   - Run in parallel:
+     - Price comparison from multiple platforms
+     - Web search for external reviews
+   - Combine all data and run LLM analysis
+   - Save complete product data to Redis: `product:{product_id}` (24h TTL)
+   - Save analysis to Redis: `product:{product_id}:analysis` (24h TTL)
 
 2. **Data Storage** (Redis):
-   - Key: `chat:{session_id}:product_data`
-   - Contains: Product info + Reviews + **Price comparison data**
+   - **Product Data Key**: `product:{product_id}` (e.g., `product:B0D7HG2GZD`)
+   - **Analysis Key**: `product:{product_id}:analysis`
+   - **Chat History Key**: `chat_history:{session_id}` (per-user conversation)
+   - Contains: Product info + Reviews + Price comparison + Web search results
 
 3. **Q&A Session** (`chatbot.py`):
-   - Retrieve product data from Redis (includes price comparison)
-   - Format product context with price comparison section
+   - Retrieve product data from Redis using product_id
+   - Clean data (remove Google redirect URLs, simplify competitor prices)
+   - Format product context as JSON in system prompt
+   - Load conversation history from Redis (session-specific)
    - Answer questions using:
-     - Product features and reviews
-     - **Price comparison across platforms**
-     - Web search results (when triggered)
+     - Cached product features and reviews
+     - **Simplified competitor price data**
+     - Web search tool (when LLM decides it's needed)
 
 4. **Response Generation**:
-   - LLM receives full context including price comparison
-   - Answers questions about prices, platforms, best deals
-   - Provides specific platform and seller recommendations
+   - LLM receives product data in system prompt
+   - Tool-calling agent decides whether to use Search tool
+   - Answers questions about product, prices, features
+   - Provides platform recommendations with simplified URLs
+   - Conversation history persisted to Redis automatically
 
 ## Technical Details
 
@@ -230,86 +219,19 @@ The chatbot is implemented in `src/chatbot.py` using LangChain's standard compon
 
 **Architecture:**
 - **Memory**: `ConversationBufferMemory` with `RedisChatMessageHistory` backend
-- **Agent Framework**: LangChain ReAct agent (`create_react_agent`)
-- **LLM**: Google Gemini (makes decisions about tool usage)
-- **Tool**: `web_search` tool using Serper API
-- **Executor**: `AgentExecutor` with memory, max 3 iterations
+- **Agent Framework**: LangChain tool-calling agent (`create_tool_calling_agent`)
+- **LLM**: Configurable provider (Google Gemini, OpenAI, Anthropic, etc.)
+- **Tool**: `Search` tool using GoogleSerperAPIWrapper
+- **Executor**: `AgentExecutor` with memory, max 10 iterations
 
 **What LangChain Handles Automatically:**
-- ✅ Conversation history loading and saving
-- ✅ `agent_scratchpad` (thought/action/observation loop)
-- ✅ ReAct format (Question/Thought/Action/Observation/Final Answer)
+- ✅ Conversation history loading and saving to Redis
+- ✅ `agent_scratchpad` (intermediate steps and tool calls)
+- ✅ Tool-calling format (native function calling for compatible models)
 - ✅ Tool descriptions and invocation
-- ✅ Memory persistence to Redis
+- ✅ Memory persistence across requests
+- ✅ Automatic tool result integration
 
-**Key Components:**
-
-1. **Redis Message History + Memory**:
-```python
-from langchain_community.chat_message_histories import RedisChatMessageHistory
-from langchain.memory import ConversationBufferMemory
-
-# Create session-specific message history
-message_history = RedisChatMessageHistory(
-    session_id=session_id,
-    url=redis_url,
-    key_prefix="chat_history:"
-)
-
-# Wrap with ConversationBufferMemory
-memory = ConversationBufferMemory(
-    chat_memory=message_history,
-    memory_key="chat_history",
-    input_key="input",  # Main input variable
-    return_messages=True
-)
-```
-
-2. **Tool Definition**:
-```python
-search_tool = Tool(
-    name="web_search",
-    description="Useful for searching the internet for current information...",
-    func=self._web_search_tool
-)
-```
-
-3. **Agent + Executor Creation**:
-```python
-# Create agent (handles ReAct format)
-self.agent = create_react_agent(self.llm, self.tools, self.agent_prompt)
-
-# Create executor with memory (handles history automatically)
-agent_executor = AgentExecutor(
-    agent=self.agent,
-    tools=self.tools,
-    memory=memory,  # LangChain manages conversation history
-    verbose=True,
-    handle_parsing_errors=True,
-    max_iterations=3
-)
-```
-
-4. **Query Execution** (Simplified):
-```python
-# LangChain automatically handles:
-# - Loading conversation history from memory
-# - Formatting agent_scratchpad
-# - ReAct thought/action/observation loop
-# - Saving new messages to memory
-
-response = agent_executor.invoke({
-    "product_context": product_context,
-    "input": question  # Just input + context, no manual history!
-})
-```
-
-**Key Methods:**
-- `format_product_context(product_data)` - Formats all product data including price comparison
-- `_web_search_tool(query)` - Web search tool function (called by agent)
-- `ask(session_id, question)` - Main method using agent executor
-- `set_product_data(session_id, product_data)` - Saves data to Redis
-- `get_product_data(session_id)` - Retrieves data from Redis
 
 ### API Configuration
 - **Endpoint**: `https://google.serper.dev/search`
@@ -367,72 +289,56 @@ response = agent_executor.invoke({
 3. **Product data first**: For basic questions, web search is not needed - product data is faster
 4. **Monitor usage**: Keep track of API usage to stay within free tier limits
 
-## Integration with Streamlit UI
+## Integration with React Web UI
 
-The web search feature works automatically in the Streamlit UI:
-- Users ask questions in the chat interface
-- Web search triggers automatically when needed
-- Visual indicator shows when search is being performed
-- Search results are seamlessly integrated into answers
+The chatbot is integrated into the React frontend via FastAPI endpoints:
 
-## Examples
+**API Endpoints:**
+- `POST /api/v1/chat/ask` - Ask a question about a product
+- `POST /api/v1/chat/clear` - Clear conversation history for a session
 
-### Example 1: Price Comparison Query (Uses Redis Data)
-```python
-question = "Where can I buy this product?"
-answer = chatbot.ask(session_id, question)
-# Uses price comparison data from Redis
-# Output: "The best deal is on FLIPKART at INR 55,900 from
-#         iNvent - Apple Premium Reseller. This offers potential
-#         savings of INR 79,000 (58.5%)..."
-```
+**How It Works:**
+1. User analyzes product → Data cached in Redis with product_id
+2. User asks question in Chat tab
+3. Frontend sends request with session_id, product_id, and question
+4. Backend retrieves product data from cache using product_id
+5. Chatbot loads conversation history for session_id
+6. LLM decides whether to use Search tool
+7. Response returned to frontend and displayed
+8. Conversation history automatically saved to Redis
 
-### Example 2: Platform Comparison (Uses Redis Data)
-```python
-question = "Show me prices on Amazon vs Flipkart"
-answer = chatbot.ask(session_id, question)
-# Uses price comparison data from Redis
-# Output: Detailed price breakdown from both platforms with
-#         specific sellers and savings information
-```
-
-### Example 3: Current Price Query (Triggers Web Search)
-```python
-question = "What is the current price?"
-answer = chatbot.ask(session_id, question)
-# Web search triggers automatically
-# Output includes: "According to current search results: ..."
-```
-
-### Example 4: Product Comparison (Triggers Web Search)
-```python
-question = "Compare this with Samsung Galaxy S24"
-answer = chatbot.ask(session_id, question)
-# Web search fetches comparison data
-# Output includes competitive analysis
-```
-
-### Example 5: Feature Query (Uses Product Data)
-```python
-question = "What are the main features?"
-answer = chatbot.ask(session_id, question)
-# No web search - uses product data
-# Output based on scraped product information
-```
+**UI Features:**
+- Real-time chat interface with message history
+- Typing indicator during question processing
+- Link detection and rich formatting
+- Clear chat button to reset conversation
+- Persistent history across page refreshes (via session_id)
 
 ## Limitations
 
 1. **Search Quality**: Results depend on Google's index and Serper API
-2. **Rate Limits**: 2,500 searches/month on free tier
-3. **Response Time**: Adds 1-2 seconds to answer generation
+2. **Rate Limits**: 2,500 searches/month on free tier for Serper API
+3. **Response Time**: Web search adds ~1-2 seconds when triggered
 4. **Relevance**: Search results may not always be perfectly relevant
-5. **No Real-Time Data**: Serper API uses cached Google data (may be slightly delayed)
+5. **Cached Data Staleness**: Product data cached for 24 hours (may not reflect real-time prices)
+6. **Tool-Calling Support**: Best with models that support native function calling (Gemini, GPT-4, etc.)
 
-## Future Enhancements
+## Current Implementation Status
 
-Potential improvements for future versions:
+**Implemented:**
+- ✅ Tool-calling agent with web search capability
+- ✅ Multi-provider LLM support (Google, OpenAI, Anthropic, Ollama)
+- ✅ Redis-backed conversation history (per-session)
+- ✅ Product data caching with 24-hour TTL
+- ✅ Automatic data cleaning (removes Google redirect URLs)
+- ✅ Simplified competitor price formatting
+- ✅ React Web UI integration
+- ✅ FastAPI endpoints for chat operations
+
+**Future Enhancements:**
 - Custom search filters (date range, specific websites)
-- Caching of search results to reduce API calls
+- Streaming responses for better UX
 - User control over when to trigger search
-- More sophisticated keyword detection
 - Integration with other search APIs (Bing, DuckDuckGo)
+- Function-calling for structured data extraction
+- Voice input/output support

@@ -1,7 +1,7 @@
 # Price Comparison Feature
 
 ## Overview
-The price comparison feature allows you to compare product prices across multiple e-commerce platforms (Amazon, Flipkart, eBay, Walmart, etc.) using the Serper API.
+The price comparison feature allows you to compare product prices across multiple e-commerce platforms (Amazon, Flipkart, eBay, Walmart, etc.) using the Serper API. It automatically filters out results from the source platform to show only genuine competitor prices.
 
 ## Setup
 
@@ -22,6 +22,7 @@ SERPER_API_KEY=your_serper_api_key_here
 
 ### Multi-Platform Price Comparison
 - **Supported Platforms**: Amazon, Flipkart, eBay, Walmart, Myntra, Snapdeal, Croma, Tata, and others
+- **Source Platform Filtering**: Automatically excludes results from the platform being analyzed (e.g., if analyzing an Amazon product, excludes Amazon from competitors)
 - **Automatic Best Deal Detection**: Finds the lowest price with good ratings
 - **Price Statistics**: Min, max, average, and median prices
 - **Savings Calculation**: Shows potential savings compared to highest price
@@ -46,88 +47,14 @@ For each product result:
 - Number of reviews
 - Product URL
 
-## Usage
+### Web UI Integration
+When analyzing a product in the React web interface, price comparison results are automatically displayed:
+- Best deal highlight with potential savings
+- Price range statistics (min, max, avg, median)
+- Platform-wise breakdown with direct purchase links
+- Competitor prices are shown in the Analysis tab
+- Source platform results are automatically excluded
 
-### Programmatic Usage
-
-```python
-from src.price_comparison import SerperPriceComparison
-
-# Initialize (reads SERPER_API_KEY from environment)
-comparer = SerperPriceComparison()
-
-# Compare prices with exact match filtering (default)
-results = comparer.compare_prices(
-    product_name="iPhone 15 Pro 256GB",
-    location="India",
-    num_results=40,
-    filter_exact_match=True,  # Only show exact matches (default)
-    similarity_threshold=0.65  # Adjust sensitivity (0.0-1.0)
-)
-
-# Access results
-best_deal = results['best_deal']
-price_stats = results['price_stats']
-platforms = results['price_comparison']
-total_matches = results['total_results']
-```
-
-**Parameters:**
-- `filter_exact_match` (bool, default=True): Filter to show only exact product matches
-- `similarity_threshold` (float, default=0.65): Similarity threshold for matching (0.0-1.0)
-  - Higher values (0.7-0.9): More strict, fewer matches
-  - Lower values (0.5-0.6): More lenient, more matches
-
-### Streamlit UI
-When analyzing a product in the Streamlit app, price comparison results are automatically displayed:
-- Best deal highlight with savings
-- Price range statistics
-- Platform-wise breakdown with links
-
-## API Response Structure
-
-```python
-{
-    'price_comparison': {
-        'amazon': [
-            {
-                'title': str,
-                'price': float,
-                'currency': str,
-                'url': str,
-                'seller': str,
-                'rating': float,
-                'reviews': int,
-                'delivery': str,
-                'in_stock': bool
-            },
-            ...
-        ],
-        'flipkart': [...],
-        'ebay': [...],
-        ...
-    },
-    'price_stats': {
-        'min_price': float,
-        'max_price': float,
-        'avg_price': float,
-        'median_price': float,
-        'total_results': int
-    },
-    'best_deal': {
-        'platform': str,
-        'title': str,
-        'price': float,
-        'currency': str,
-        'url': str,
-        'seller': str,
-        'rating': float,
-        'savings': float,
-        'savings_percent': float
-    },
-    'total_results': int
-}
-```
 
 ## Testing
 
@@ -146,7 +73,12 @@ python test_price_comparison.py
 
 ## Disabling Price Comparison
 
-To disable price comparison, simply don't set `SERPER_API_KEY` in `.env`. The `ProductAnalyzer` will automatically detect if the API key is missing and disable price comparison features.
+To disable price comparison, simply don't set `SERPER_API_KEY` in `.env`. The workflow orchestrator will automatically detect if the API key is missing and skip price comparison during product analysis.
+
+When disabled:
+- Price comparison node is skipped in the LangGraph workflow
+- Analysis continues with only scraped product data
+- No additional API costs are incurred
 
 ## Troubleshooting
 
@@ -165,9 +97,23 @@ To disable price comparison, simply don't set `SERPER_API_KEY` in `.env`. The `P
 - Change location parameter
 - Increase `num_results` parameter
 
+## Integration with LangGraph Workflow
+
+Price comparison is integrated into the LangGraph workflow orchestrator:
+1. Runs in parallel with web search after product scraping
+2. Automatically passes source platform to exclude from results
+3. Results are combined with product data before LLM analysis
+4. Cached in Redis along with product data (24-hour TTL)
+
+
+**Performance:**
+- First request: ~10-15 seconds for price comparison (parallel with web search)
+- Subsequent requests: <1 second (from Redis cache)
+
 ## Cost Optimization
 
 - Free tier: 2,500 searches/month
-- Each product analysis = 1 search
-- Cache results when possible
+- Each product analysis = 1 search (if price comparison enabled)
+- Results cached in Redis for 24 hours - subsequent requests use cache
 - Use generic product names for better matches
+- Consider disabling for products with poor price data availability
