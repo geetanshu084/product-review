@@ -3,6 +3,7 @@ Multi-Platform Price Comparison using Serper API
 Compares product prices across Amazon, Flipkart, eBay, Walmart, and other platforms
 """
 
+import os
 import re
 import statistics
 from typing import Dict, List, Optional, Tuple
@@ -13,14 +14,16 @@ from difflib import SequenceMatcher
 class SerperPriceComparison:
     """Price comparison across multiple e-commerce platforms using Serper API"""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: Optional[str] = None):
         """
         Initialize the price comparison service
 
         Args:
-            api_key: Serper API key from serper.dev
+            api_key: Serper API key from serper.dev (optional, reads from SERPER_API_KEY environment variable if not provided)
         """
-        self.api_key = api_key
+        self.api_key = api_key or os.getenv('SERPER_API_KEY')
+        if not self.api_key:
+            raise ValueError("SERPER_API_KEY not provided and not found in environment")
         self.base_url = "https://google.serper.dev"
 
     def search_shopping(
@@ -220,6 +223,37 @@ class SerperPriceComparison:
         similarity = self._calculate_product_similarity(original_title, result_title)
         return similarity >= threshold
 
+    def _extract_direct_url(self, url: str) -> str:
+        """
+        Extract direct URL from Google redirect URL
+
+        Args:
+            url: URL (possibly a Google redirect)
+
+        Returns:
+            Direct URL to the product
+        """
+        if not url:
+            return ""
+
+        # Check if it's a Google redirect URL
+        if "google.com/url" in url or "google.com/shopping" in url:
+            # Try to extract the actual URL from 'q' parameter
+            import urllib.parse
+            parsed = urllib.parse.urlparse(url)
+            params = urllib.parse.parse_qs(parsed.query)
+
+            # Google uses 'q' parameter for the redirect URL
+            if 'q' in params:
+                return params['q'][0]
+
+            # Some Shopping URLs use 'url' parameter
+            if 'url' in params:
+                return params['url'][0]
+
+        # Return original URL if not a redirect
+        return url
+
     def _normalize_result(self, result: Dict) -> Dict:
         """
         Normalize a single shopping result
@@ -243,11 +277,15 @@ class SerperPriceComparison:
                 except ValueError:
                     extracted_price = 0
 
+            # Extract direct URL (remove Google redirect)
+            raw_url = result.get("link", "")
+            direct_url = self._extract_direct_url(raw_url)
+
             return {
                 "title": result.get("title", "N/A"),
                 "price": float(extracted_price) if extracted_price else 0.0,
                 "currency": self._parse_currency(price_str),
-                "url": result.get("link", ""),
+                "url": direct_url,
                 "seller": result.get("source", "N/A"),
                 "rating": result.get("rating", 0.0),
                 # API returns "ratingCount" (not "reviews")
@@ -371,7 +409,8 @@ class SerperPriceComparison:
         location: str = "India",
         num_results: int = 20,
         filter_exact_match: bool = True,
-        similarity_threshold: float = 0.65
+        similarity_threshold: float = 0.65,
+        source_platform: str = None
     ) -> Dict:
         """
         Compare prices across platforms for the same product
@@ -382,6 +421,7 @@ class SerperPriceComparison:
             num_results: Number of results to fetch
             filter_exact_match: Filter to show only exact product matches (default: True)
             similarity_threshold: Similarity threshold for product matching (default: 0.65)
+            source_platform: Platform being analyzed (e.g., "Amazon", "Flipkart") - excluded from competitors (default: None)
 
         Returns:
             Dictionary with price comparison data
@@ -427,10 +467,21 @@ class SerperPriceComparison:
         # Normalize results
         normalized_results = []
         filtered_out_count = 0
+        source_platform_filtered_count = 0
+
+        # Normalize source platform name for comparison (e.g., "Amazon" -> "amazon")
+        source_platform_normalized = source_platform.lower() if source_platform else None
 
         for result in shopping_results:
             normalized = self._normalize_result(result)
             if normalized:
+                # Filter out source platform if specified
+                if source_platform_normalized:
+                    result_platform = self._extract_platform_from_source(normalized['seller'])
+                    if result_platform == source_platform_normalized:
+                        source_platform_filtered_count += 1
+                        continue
+
                 # Filter to only include exact product matches
                 if filter_exact_match:
                     if self._is_same_product(product_name, normalized['title'], similarity_threshold):
@@ -440,6 +491,9 @@ class SerperPriceComparison:
                 else:
                     normalized_results.append(normalized)
 
+        # Print filtering summary
+        if source_platform_filtered_count > 0:
+            print(f"✓ Filtered out {source_platform_filtered_count} results from {source_platform} (source platform)")
         if filter_exact_match and filtered_out_count > 0:
             print(f"✓ Found {len(normalized_results)} exact matches (filtered out {filtered_out_count} different products)")
         else:

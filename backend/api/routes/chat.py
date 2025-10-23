@@ -39,8 +39,12 @@ async def ask_question(request: ChatRequest):
         )
 
     except ValueError as e:
+        print(f"❌ Chat ValueError: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        print(f"❌ Chat Exception: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
 
 

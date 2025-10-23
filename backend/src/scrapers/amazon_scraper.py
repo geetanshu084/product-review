@@ -1,6 +1,6 @@
 """
-Amazon Product Scraper Module
-Extracts product information and reviews from Amazon product pages
+Amazon Product Scraper
+Implements BaseScraper interface for Amazon e-commerce platform
 """
 
 import os
@@ -10,11 +10,12 @@ import json
 from typing import Dict, List, Optional
 import requests
 from bs4 import BeautifulSoup
+from .base_scraper import BaseScraper
 from src.llm_extractor import LLMProductExtractor
 from src.redis_manager import get_redis_client
 
 
-class AmazonScraper:
+class AmazonScraper(BaseScraper):
     """Scrapes product information and reviews from Amazon"""
 
     HEADERS = {
@@ -32,31 +33,29 @@ class AmazonScraper:
     }
 
     def __init__(self):
-        """
-        Initialize the scraper
-
-        All configuration is read from environment variables:
-        - GOOGLE_API_KEY (or LLM provider key): For LLM extraction
-        - LLM_PROVIDER: LLM provider to use (default: google)
-        - LLM_MODEL: Model name (optional)
-        - REDIS_HOST: Redis server host (default: localhost)
-        - REDIS_PORT: Redis server port (default: 6379)
-        - REDIS_DB: Redis database number (default: 0)
-        - REDIS_PASSWORD: Redis password (optional)
-        - CACHE_TTL: Cache time-to-live in seconds (default: 86400 = 24 hours)
-        """
+        """Initialize Amazon scraper"""
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
         self.cache_ttl = int(os.getenv('CACHE_TTL', '86400'))  # 24 hours default
-
-        # Initialize Redis cache (always enabled, will fail at startup if not available)
         self.redis_client = get_redis_client()
-
-        # Initialize LLM extractor (always enabled)
         self.llm_extractor = LLMProductExtractor()
-        print("✓ LLM extraction enabled")
 
-    def extract_asin(self, url: str) -> Optional[str]:
+    def get_platform_name(self) -> str:
+        """Returns platform name"""
+        return "Amazon"
+
+    def validate_url(self, url: str) -> bool:
+        """Validate if URL is a valid Amazon product URL"""
+        if not url or not isinstance(url, str):
+            return False
+
+        amazon_domains = ['amazon.com', 'amazon.in', 'amazon.co.uk', 'amazon.de', 'amazon.fr']
+        is_amazon = any(domain in url.lower() for domain in amazon_domains)
+        has_asin = self.extract_product_id(url) is not None
+
+        return is_amazon and has_asin
+
+    def extract_product_id(self, url: str) -> Optional[str]:
         """Extract ASIN from Amazon product URL"""
         patterns = [
             r'/dp/([A-Z0-9]{10})',
@@ -71,24 +70,9 @@ class AmazonScraper:
                 return match.group(1)
         return None
 
-    def validate_url(self, url: str) -> bool:
-        """Validate if URL is a valid Amazon product URL"""
-        if not url or not isinstance(url, str):
-            return False
-
-        amazon_domains = ['amazon.com', 'amazon.in', 'amazon.co.uk', 'amazon.de', 'amazon.fr']
-        is_amazon = any(domain in url.lower() for domain in amazon_domains)
-        has_asin = self.extract_asin(url) is not None
-
-        return is_amazon and has_asin
-
-    def _extract_domain(self, url: str) -> str:
-        """Extract Amazon domain from URL"""
-        import re
-        match = re.search(r'amazon\.(com|in|co\.uk|de|fr|ca|com\.au|es|it|co\.jp)', url.lower())
-        if match:
-            return f"amazon.{match.group(1)}"
-        return "amazon.com"  # Default fallback
+    def get_cache_key(self, product_id: str) -> str:
+        """Generate Redis cache key for Amazon product"""
+        return f"product:amazon:{product_id}"
 
     def scrape_product(self, url: str) -> Dict:
         """
@@ -108,7 +92,7 @@ class AmazonScraper:
         if not self.validate_url(url):
             raise ValueError("Invalid Amazon URL. Please provide a valid product URL.")
 
-        asin = self.extract_asin(url)
+        asin = self.extract_product_id(url)
 
         # Check cache first
         cached_data = self._get_from_cache(asin)
@@ -126,7 +110,9 @@ class AmazonScraper:
 
             # Extract product data
             product_data = {
-                'asin': asin,
+                'platform': self.get_platform_name(),
+                'product_id': asin,  # Generic product ID
+                'asin': asin,  # Amazon-specific ASIN (for backward compatibility)
                 'url': url,
                 'title': self._extract_title(soup),
                 'brand': self._extract_brand(soup),
@@ -154,17 +140,16 @@ class AmazonScraper:
             print(f"✓ Scraped {len(reviews)} reviews from product page\n")
             product_data['reviews'] = reviews
 
-            # Use LLM extraction to enhance and fill missing data (always enabled)
+            # Use LLM extraction to enhance and fill missing data
             try:
                 print("🤖 Enhancing data with LLM extraction...")
                 llm_data = self.llm_extractor.extract_product_data(response.content.decode('utf-8'), url)
 
-                # Merge LLM data with traditional scraping (LLM fills gaps + adds bank offers)
+                # Merge LLM data with traditional scraping
                 product_data = self._merge_product_data(product_data, llm_data)
                 print("✓ LLM enhancement complete")
             except Exception as e:
                 print(f"⚠ LLM enhancement failed: {str(e)}")
-                # Continue with traditional scraping data
 
             # Save to cache
             self._save_to_cache(asin, product_data)
@@ -178,17 +163,9 @@ class AmazonScraper:
             )
 
     def _get_from_cache(self, asin: str) -> Optional[Dict]:
-        """
-        Get product data from Redis cache
-
-        Args:
-            asin: Product ASIN
-
-        Returns:
-            Cached product data or None
-        """
+        """Get product data from Redis cache"""
         try:
-            cache_key = f"product:{asin}"
+            cache_key = self.get_cache_key(asin)
             cached_json = self.redis_client.get(cache_key)
             if cached_json:
                 return json.loads(cached_json)
@@ -197,35 +174,19 @@ class AmazonScraper:
         return None
 
     def _save_to_cache(self, asin: str, product_data: Dict):
-        """
-        Save product data to Redis cache with 24-hour TTL
-
-        Args:
-            asin: Product ASIN
-            product_data: Product data dictionary
-        """
+        """Save product data to Redis cache with 24-hour TTL"""
         try:
-            cache_key = f"product:{asin}"
+            cache_key = self.get_cache_key(asin)
             product_json = json.dumps(product_data, ensure_ascii=False)
             self.redis_client.setex(cache_key, self.cache_ttl, product_json)
         except Exception as e:
             print(f"⚠ Cache write error: {str(e)}")
 
     def _merge_product_data(self, traditional_data: Dict, llm_data: Dict) -> Dict:
-        """
-        Merge traditional scraping data with LLM-extracted data
-        Priority: Keep traditional data, use LLM to fill gaps and add new fields
-
-        Args:
-            traditional_data: Data from traditional HTML scraping
-            llm_data: Data extracted by LLM
-
-        Returns:
-            Merged dictionary with best of both
-        """
+        """Merge traditional scraping data with LLM-extracted data"""
         merged = traditional_data.copy()
 
-        # Add bank_offers from LLM (not available in traditional scraping)
+        # Add bank_offers from LLM
         if 'bank_offers' in llm_data and llm_data['bank_offers']:
             merged['bank_offers'] = llm_data['bank_offers']
         else:
@@ -241,13 +202,13 @@ class AmazonScraper:
                 if llm_data.get(key):
                     merged[key] = llm_data[key]
 
-        # Merge specifications (combine both sources)
+        # Merge specifications
         if llm_data.get('specifications'):
             if not merged.get('specifications'):
                 merged['specifications'] = {}
             merged['specifications'].update(llm_data['specifications'])
 
-        # Merge product_details (combine both sources)
+        # Merge product_details
         if llm_data.get('product_details'):
             if not merged.get('product_details'):
                 merged['product_details'] = {}
@@ -287,13 +248,12 @@ class AmazonScraper:
                 element = soup.find(class_=selector_value)
 
             if element:
-                return element.get_text().strip()
+                return self.clean_text(element.get_text())
 
         return "Title not found"
 
     def _extract_brand(self, soup: BeautifulSoup) -> str:
         """Extract brand name"""
-        # Try multiple selectors
         brand_selectors = [
             {'id': 'bylineInfo'},
             {'class': 'po-brand'},
@@ -304,10 +264,9 @@ class AmazonScraper:
             element = soup.find('a', selector) or soup.find('span', selector)
             if element:
                 text = element.get_text().strip()
-                # Clean up brand text
                 text = text.replace('Brand:', '').replace('Visit the', '').replace('Store', '').strip()
                 if text:
-                    return text
+                    return self.clean_text(text)
 
         return "Brand not found"
 
@@ -349,12 +308,9 @@ class AmazonScraper:
 
             if element:
                 text = element.get_text().strip()
-                # Extract rating number (e.g., "4.5 out of 5 stars")
-                match = re.search(r'(\d+\.?\d*)\s*out\s*of\s*5', text)
-                if match:
-                    return f"{match.group(1)}/5"
-                elif 'out of 5' in text:
-                    return text
+                parsed = self.parse_rating(text)
+                if parsed:
+                    return parsed
 
         return "Rating not available"
 
@@ -373,7 +329,6 @@ class AmazonScraper:
 
             if element:
                 text = element.get_text().strip()
-                # Extract number (e.g., "1,234 ratings")
                 match = re.search(r'([\d,]+)', text)
                 if match:
                     return match.group(1)
@@ -391,7 +346,7 @@ class AmazonScraper:
         for selector in desc_selectors:
             element = soup.find('div', selector) or soup.find('ul', selector)
             if element:
-                return element.get_text().strip()
+                return self.clean_text(element.get_text())
 
         return "Description not available"
 
@@ -399,26 +354,24 @@ class AmazonScraper:
         """Extract product features/bullet points"""
         features = []
 
-        # Try feature bullets section
         feature_div = soup.find('div', {'id': 'feature-bullets'})
         if feature_div:
             feature_items = feature_div.find_all('span', {'class': 'a-list-item'})
             for item in feature_items:
-                text = item.get_text().strip()
-                if text and len(text) > 5:  # Filter out empty or very short items
+                text = self.clean_text(item.get_text())
+                if text and len(text) > 5:
                     features.append(text)
 
-        # If no features found, try alternate selector
         if not features:
             feature_list = soup.find('ul', {'class': 'a-unordered-list a-vertical a-spacing-mini'})
             if feature_list:
                 items = feature_list.find_all('li')
                 for item in items:
-                    text = item.get_text().strip()
+                    text = self.clean_text(item.get_text())
                     if text and len(text) > 5:
                         features.append(text)
 
-        return features[:10]  # Limit to 10 features
+        return features[:10]
 
     def _extract_seller_name(self, soup: BeautifulSoup) -> str:
         """Extract seller name"""
@@ -431,13 +384,12 @@ class AmazonScraper:
         for selector in seller_selectors:
             element = soup.find('a', selector) or soup.find('span', selector)
             if element:
-                return element.get_text().strip()
+                return self.clean_text(element.get_text())
 
         return "Seller not found"
 
     def _extract_seller_rating(self, soup: BeautifulSoup) -> str:
         """Extract seller rating"""
-        # Look for seller rating in merchant info
         merchant_div = soup.find('div', {'id': 'merchantInfoFeature'})
         if merchant_div:
             rating_span = merchant_div.find('span', {'class': 'a-icon-alt'})
@@ -450,11 +402,10 @@ class AmazonScraper:
         return "Rating not available"
 
     def _extract_specifications(self, soup: BeautifulSoup) -> Dict[str, str]:
-        """Extract product specifications from various sections"""
+        """Extract product specifications"""
         specifications = {}
 
         try:
-            # Try "Product information" section
             product_info_section = soup.find('div', {'id': 'productDetails_techSpec_section_1'})
             if product_info_section:
                 rows = product_info_section.find_all('tr')
@@ -462,12 +413,11 @@ class AmazonScraper:
                     header = row.find('th')
                     value = row.find('td')
                     if header and value:
-                        key = header.get_text().strip()
-                        val = value.get_text().strip()
+                        key = self.clean_text(header.get_text())
+                        val = self.clean_text(value.get_text())
                         if key and val:
                             specifications[key] = val
 
-            # Try alternate "Technical Details" table
             tech_details = soup.find('table', {'id': 'productDetails_techSpec_section_1'})
             if tech_details:
                 rows = tech_details.find_all('tr')
@@ -475,8 +425,8 @@ class AmazonScraper:
                     header = row.find('th')
                     value = row.find('td')
                     if header and value:
-                        key = header.get_text().strip()
-                        val = value.get_text().strip()
+                        key = self.clean_text(header.get_text())
+                        val = self.clean_text(value.get_text())
                         if key and val:
                             specifications[key] = val
 
@@ -486,33 +436,30 @@ class AmazonScraper:
         return specifications
 
     def _extract_product_details(self, soup: BeautifulSoup) -> Dict[str, str]:
-        """Extract product details (dimensions, weight, etc.)"""
+        """Extract product details"""
         details = {}
 
         try:
-            # Look for "Product Details" section
             detail_sections = soup.find_all('div', {'id': re.compile(r'productDetails.*')})
 
             for section in detail_sections:
-                # Try list format
                 list_items = section.find_all('li')
                 for item in list_items:
                     text = item.get_text()
                     if ':' in text:
                         parts = text.split(':', 1)
                         if len(parts) == 2:
-                            key = parts[0].strip()
-                            value = parts[1].strip()
+                            key = self.clean_text(parts[0])
+                            value = self.clean_text(parts[1])
                             if key and value:
                                 details[key] = value
 
-                # Try table format
                 rows = section.find_all('tr')
                 for row in rows:
                     cols = row.find_all(['th', 'td'])
                     if len(cols) == 2:
-                        key = cols[0].get_text().strip()
-                        value = cols[1].get_text().strip()
+                        key = self.clean_text(cols[0].get_text())
+                        value = self.clean_text(cols[1].get_text())
                         if key and value:
                             details[key] = value
 
@@ -526,7 +473,6 @@ class AmazonScraper:
         tech_details = {}
 
         try:
-            # Look for technical details table
             tech_table = soup.find('table', {'id': 'productDetails_techSpec_section_2'})
             if tech_table:
                 rows = tech_table.find_all('tr')
@@ -534,20 +480,19 @@ class AmazonScraper:
                     header = row.find('th')
                     value = row.find('td')
                     if header and value:
-                        key = header.get_text().strip()
-                        val = value.get_text().strip()
+                        key = self.clean_text(header.get_text())
+                        val = self.clean_text(value.get_text())
                         if key and val:
                             tech_details[key] = val
 
-            # Try alternate selector for technical specs
             tech_section = soup.find('div', {'id': 'tech-spec-desktop'})
             if tech_section:
                 rows = tech_section.find_all('tr')
                 for row in rows:
                     cols = row.find_all(['th', 'td'])
                     if len(cols) == 2:
-                        key = cols[0].get_text().strip()
-                        value = cols[1].get_text().strip()
+                        key = self.clean_text(cols[0].get_text())
+                        value = self.clean_text(cols[1].get_text())
                         if key and value:
                             tech_details[key] = value
 
@@ -561,7 +506,6 @@ class AmazonScraper:
         additional_info = {}
 
         try:
-            # Look for "Additional Information" section
             info_section = soup.find('div', {'id': 'productDetails_db_sections'})
             if info_section:
                 rows = info_section.find_all('tr')
@@ -569,20 +513,19 @@ class AmazonScraper:
                     header = row.find('th')
                     value = row.find('td')
                     if header and value:
-                        key = header.get_text().strip()
-                        val = value.get_text().strip()
+                        key = self.clean_text(header.get_text())
+                        val = self.clean_text(value.get_text())
                         if key and val:
                             additional_info[key] = val
 
-            # Try detail bullets format
             detail_bullets = soup.find('div', {'id': 'detailBullets_feature_div'})
             if detail_bullets:
                 list_items = detail_bullets.find_all('li')
                 for item in list_items:
                     spans = item.find_all('span')
                     if len(spans) >= 2:
-                        key = spans[0].get_text().strip().rstrip(':')
-                        value = spans[1].get_text().strip()
+                        key = self.clean_text(spans[0].get_text().rstrip(':'))
+                        value = self.clean_text(spans[1].get_text())
                         if key and value:
                             additional_info[key] = value
 
@@ -596,16 +539,13 @@ class AmazonScraper:
         warranty_info = ""
 
         try:
-            # Look for warranty in various places
             warranty_keywords = ['warranty', 'guarantee', 'guaranty']
 
-            # Check product features
             features = self._extract_features(soup)
             for feature in features:
                 if any(keyword in feature.lower() for keyword in warranty_keywords):
                     warranty_info += feature + " "
 
-            # Check product details
             detail_sections = soup.find_all('div', {'id': re.compile(r'productDetails.*')})
             for section in detail_sections:
                 text = section.get_text()
@@ -623,20 +563,17 @@ class AmazonScraper:
     def _extract_availability(self, soup: BeautifulSoup) -> str:
         """Extract product availability status"""
         try:
-            # Look for availability in stock status
             availability_elem = soup.find('div', {'id': 'availability'})
             if availability_elem:
-                return availability_elem.get_text().strip()
+                return self.clean_text(availability_elem.get_text())
 
-            # Try alternate selector
             availability_span = soup.find('span', {'class': 'a-size-medium a-color-success'})
             if availability_span:
-                return availability_span.get_text().strip()
+                return self.clean_text(availability_span.get_text())
 
-            # Check for out of stock
             out_of_stock = soup.find('span', {'class': 'a-size-medium a-color-error'})
             if out_of_stock:
-                return out_of_stock.get_text().strip()
+                return self.clean_text(out_of_stock.get_text())
 
         except Exception as e:
             print(f"Error extracting availability: {str(e)}")
@@ -644,35 +581,26 @@ class AmazonScraper:
         return "Availability not specified"
 
     def _extract_images(self, soup: BeautifulSoup) -> List[str]:
-        """
-        Extract product images ONLY from the top product carousel section
-        Excludes review images, related products, ads, etc.
-        """
+        """Extract product images from top carousel"""
         images = []
 
         try:
             print("\n🖼️  Extracting product images from top carousel...")
 
-            # Strategy 1: Extract from JavaScript 'colorImages' data (most reliable)
-            # Amazon stores carousel images in a JavaScript object
             scripts = soup.find_all('script', {'type': 'text/javascript'})
             for script in scripts:
                 if script.string and ('colorImages' in script.string or 'ImageBlockATF' in script.string):
                     script_text = script.string
 
-                    # Look for the colorImages object which contains main product images
-                    # Format: 'colorImages': { 'initial': [{"large":"url","main":{"url":"..."}},...] }
                     color_images_match = re.search(r'"colorImages":\s*\{[^}]*"initial":\s*\[([^\]]+)\]', script_text)
                     if color_images_match:
                         images_json = color_images_match.group(1)
-                        # Extract all "large" or "hiRes" image URLs
                         large_urls = re.findall(r'"(?:large|hiRes)":\s*"([^"]+)"', images_json)
                         for url in large_urls:
                             if url and url.startswith('http') and url not in images:
                                 images.append(url)
                                 print(f"  ✓ Found image from colorImages: {url[:80]}...")
 
-                    # Fallback: Look for other high-res image arrays
                     if not images:
                         hiRes_urls = re.findall(r'"hiRes":\s*"([^"]+)"', script_text)
                         for url in hiRes_urls:
@@ -680,44 +608,35 @@ class AmazonScraper:
                                 images.append(url)
                                 print(f"  ✓ Found image from hiRes: {url[:80]}...")
 
-            # Strategy 2: Get main landing image (visible image on page load)
             if not images:
                 print("  → Trying landing image selector...")
                 landing_img = soup.find('img', {'id': 'landingImage'})
                 if landing_img:
-                    # Try data-old-hires first (high-res version)
                     src = landing_img.get('data-old-hires') or landing_img.get('src')
                     if src and src.startswith('http'):
                         images.append(src)
                         print(f"  ✓ Found landing image: {src[:80]}...")
 
-            # Strategy 3: Look in imageBlock section ONLY (top carousel area)
-            # This is the container for the main product image gallery
             if len(images) < 2:
                 print("  → Searching imageBlock section...")
                 image_block = soup.find('div', {'id': 'imageBlock'})
                 if image_block:
-                    # Find the altImages container (thumbnail strip below main image)
                     alt_images = image_block.find('div', {'id': 'altImages'})
                     if alt_images:
-                        # Get all list items in the thumbnail strip
                         thumb_items = alt_images.find_all('li', {'class': 'imageThumbnail'})
                         for item in thumb_items:
                             img_tag = item.find('img')
                             if img_tag:
-                                # Get the large version from data attribute
                                 large_url = img_tag.get('data-old-hires') or img_tag.get('src')
                                 if large_url and large_url.startswith('http') and large_url not in images:
-                                    # Convert thumbnail to full-size
                                     full_url = self._convert_to_fullsize_image(large_url)
                                     images.append(full_url)
                                     print(f"  ✓ Found image from altImages: {full_url[:80]}...")
 
-            # Strategy 4: Direct search for imgTagWrapperDiv (carousel thumbnails)
             if len(images) < 2:
                 print("  → Searching imgTagWrapperDiv...")
                 thumb_wrappers = soup.find_all('div', {'class': 'imgTagWrapper'})
-                for wrapper in thumb_wrappers[:7]:  # Limit to 7 images
+                for wrapper in thumb_wrappers[:7]:
                     img = wrapper.find('img')
                     if img:
                         src = img.get('src') or img.get('data-src')
@@ -726,18 +645,16 @@ class AmazonScraper:
                             images.append(full_url)
                             print(f"  ✓ Found image from imgTagWrapper: {full_url[:80]}...")
 
-            # Final filtering: Remove any URLs that look like review/user images
             filtered_images = []
             for img_url in images:
                 url_lower = img_url.lower()
-                # Exclude images that are clearly from reviews or user content
                 if not any(keyword in url_lower for keyword in ['review', 'customer-image', 'ugc-image', 'user-image']):
                     filtered_images.append(img_url)
                 else:
                     print(f"  ✗ Filtered out review/user image: {img_url[:80]}...")
 
             print(f"\n✓ Total product images extracted: {len(filtered_images)}\n")
-            return filtered_images[:8]  # Limit to max 8 images
+            return filtered_images[:8]
 
         except Exception as e:
             print(f"❌ Error extracting images: {str(e)}")
@@ -748,12 +665,8 @@ class AmazonScraper:
     def _convert_to_fullsize_image(self, thumbnail_url: str) -> str:
         """Convert Amazon thumbnail URL to full-size image URL"""
         full_size = thumbnail_url
-
-        # Remove size constraints to get higher resolution image
-        # Amazon uses patterns like _AC_US40_, _SX38_, _SY38_, etc.
-        full_size = re.sub(r'_[AS][XYC][\d]+_', '_AC_SL1500_', full_size)  # Replace with large size
+        full_size = re.sub(r'_[AS][XYC][\d]+_', '_AC_SL1500_', full_size)
         full_size = re.sub(r'_AC_[A-Z]{2}[\d]+_', '_AC_SL1500_', full_size)
-
         return full_size
 
     def _extract_category(self, soup: BeautifulSoup) -> str:
@@ -761,7 +674,6 @@ class AmazonScraper:
         category = ""
 
         try:
-            # Look for breadcrumbs
             breadcrumbs = soup.find('ul', {'class': 'a-unordered-list a-horizontal a-size-small'})
             if breadcrumbs:
                 items = breadcrumbs.find_all('li')
@@ -769,17 +681,16 @@ class AmazonScraper:
                 for item in items:
                     link = item.find('a')
                     if link:
-                        cat_text = link.get_text().strip()
+                        cat_text = self.clean_text(link.get_text())
                         if cat_text:
                             categories.append(cat_text)
                 category = ' > '.join(categories)
 
-            # Try alternate selector
             if not category:
                 breadcrumb_div = soup.find('div', {'id': 'wayfinding-breadcrumbs_feature_div'})
                 if breadcrumb_div:
                     links = breadcrumb_div.find_all('a')
-                    categories = [link.get_text().strip() for link in links if link.get_text().strip()]
+                    categories = [self.clean_text(link.get_text()) for link in links if self.clean_text(link.get_text())]
                     category = ' > '.join(categories)
 
         except Exception as e:
@@ -787,83 +698,16 @@ class AmazonScraper:
 
         return category if category else "Category not found"
 
-    def _extract_review_title(self, review_div: BeautifulSoup) -> str:
-        """Extract review title"""
-        title_elem = review_div.find('a', {'data-hook': 'review-title'})
-        if not title_elem:
-            title_elem = review_div.find('span', {'data-hook': 'review-title'})
-
-        if title_elem:
-            return title_elem.get_text().strip()
-        return ""
-
-    def _extract_review_rating(self, review_div: BeautifulSoup) -> str:
-        """Extract review rating"""
-        rating_elem = review_div.find('i', {'data-hook': 'review-star-rating'})
-        if not rating_elem:
-            rating_elem = review_div.find('span', {'class': 'a-icon-alt'})
-
-        if rating_elem:
-            text = rating_elem.get_text().strip()
-            match = re.search(r'(\d+\.?\d*)\s*out\s*of\s*5', text)
-            if match:
-                return f"{match.group(1)}/5"
-        return ""
-
-    def _extract_review_text(self, review_div: BeautifulSoup) -> str:
-        """Extract review text"""
-        text_elem = review_div.find('span', {'data-hook': 'review-body'})
-        if text_elem:
-            return text_elem.get_text().strip()
-        return ""
-
-    def _extract_review_author(self, review_div: BeautifulSoup) -> str:
-        """Extract review author name"""
-        author_elem = review_div.find('span', {'class': 'a-profile-name'})
-        if author_elem:
-            return author_elem.get_text().strip()
-        return "Anonymous"
-
-    def _extract_review_date(self, review_div: BeautifulSoup) -> str:
-        """Extract review date"""
-        date_elem = review_div.find('span', {'data-hook': 'review-date'})
-        if date_elem:
-            text = date_elem.get_text().strip()
-            # Extract date from text like "Reviewed in the United States on January 1, 2024"
-            match = re.search(r'on (.+)$', text)
-            if match:
-                return match.group(1)
-            return text
-        return ""
-
-    def _extract_review_verified(self, review_div: BeautifulSoup) -> bool:
-        """Check if review is verified purchase"""
-        verified_elem = review_div.find('span', {'data-hook': 'avp-badge'})
-        return verified_elem is not None
-
     def _scrape_reviews_from_product_page(self, soup: BeautifulSoup) -> List[Dict]:
-        """
-        Scrape customer reviews directly from the product page HTML
-        (doesn't require authentication, typically shows 5-10 reviews)
-
-        Args:
-            soup: BeautifulSoup object of the product page
-
-        Returns:
-            List of review dictionaries
-        """
+        """Scrape customer reviews from product page"""
         reviews = []
 
         try:
-            # Find review section on product page
-            # Amazon product pages typically show a few top reviews
             review_divs = soup.find_all('div', {'data-hook': 'review'})
 
-            # If not found, try alternate selectors for review containers
             if not review_divs:
                 review_divs = soup.find_all('div', {'id': re.compile(r'customer_review-.*')})
 
-            # If still not found, try looking in the reviews section
             if not review_divs:
                 reviews_section = soup.find('div', {'id': 'reviewsMedley'})
                 if reviews_section:
@@ -871,7 +715,6 @@ class AmazonScraper:
 
             print(f"Found {len(review_divs)} review containers on product page")
 
-            # Extract reviews from found containers
             for review_div in review_divs:
                 review_data = {
                     'title': self._extract_review_title(review_div),
@@ -882,7 +725,6 @@ class AmazonScraper:
                     'verified_purchase': self._extract_review_verified(review_div)
                 }
 
-                # Only add if we got at least some meaningful data
                 if review_data['text'] or review_data['title']:
                     reviews.append(review_data)
                     print(f"  - Extracted review: {review_data['title'][:50]}..." if review_data['title'] else f"  - Extracted review with rating: {review_data['rating']}")
@@ -891,3 +733,56 @@ class AmazonScraper:
             print(f"Error scraping reviews from product page: {str(e)}")
 
         return reviews
+
+    def _extract_review_title(self, review_div: BeautifulSoup) -> str:
+        """Extract review title"""
+        title_elem = review_div.find('a', {'data-hook': 'review-title'})
+        if not title_elem:
+            title_elem = review_div.find('span', {'data-hook': 'review-title'})
+
+        if title_elem:
+            return self.clean_text(title_elem.get_text())
+        return ""
+
+    def _extract_review_rating(self, review_div: BeautifulSoup) -> str:
+        """Extract review rating"""
+        rating_elem = review_div.find('i', {'data-hook': 'review-star-rating'})
+        if not rating_elem:
+            rating_elem = review_div.find('span', {'class': 'a-icon-alt'})
+
+        if rating_elem:
+            text = rating_elem.get_text().strip()
+            parsed = self.parse_rating(text)
+            if parsed:
+                return parsed
+        return ""
+
+    def _extract_review_text(self, review_div: BeautifulSoup) -> str:
+        """Extract review text"""
+        text_elem = review_div.find('span', {'data-hook': 'review-body'})
+        if text_elem:
+            return self.clean_text(text_elem.get_text())
+        return ""
+
+    def _extract_review_author(self, review_div: BeautifulSoup) -> str:
+        """Extract review author name"""
+        author_elem = review_div.find('span', {'class': 'a-profile-name'})
+        if author_elem:
+            return self.clean_text(author_elem.get_text())
+        return "Anonymous"
+
+    def _extract_review_date(self, review_div: BeautifulSoup) -> str:
+        """Extract review date"""
+        date_elem = review_div.find('span', {'data-hook': 'review-date'})
+        if date_elem:
+            text = date_elem.get_text().strip()
+            match = re.search(r'on (.+)$', text)
+            if match:
+                return match.group(1)
+            return text
+        return ""
+
+    def _extract_review_verified(self, review_div: BeautifulSoup) -> bool:
+        """Check if review is verified purchase"""
+        verified_elem = review_div.find('span', {'data-hook': 'avp-badge'})
+        return verified_elem is not None

@@ -1,0 +1,13 @@
+Analyze the following web content and extract key information about the product.
+
+Focus on:
+1. Overall sentiment (positive/negative/mixed)
+2. Key features or aspects mentioned
+3. Common complaints or issues
+4. Recommendations or conclusions
+5. Any technical specifications or important details
+
+Content:
+{content}
+
+Provide a concise summary (2-3 sentences) highlighting the most important points.

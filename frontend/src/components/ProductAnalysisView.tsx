@@ -13,6 +13,12 @@ interface ProductAnalysisViewProps {
 }
 
 const ProductAnalysisView: React.FC<ProductAnalysisViewProps> = ({ product, analysis }) => {
+  const [currentImageIndex, setCurrentImageIndex] = React.useState(0);
+
+  // Get platform name and icon
+  const platformName = product.platform || 'Amazon'; // Default to Amazon if not specified
+  const platformIcon = platformName === 'Flipkart' ? '🛍️' : '🛒';
+
   // Extract numeric price for comparison
   const extractPrice = (priceStr?: string): number => {
     if (!priceStr) return 0;
@@ -32,17 +38,43 @@ const ProductAnalysisView: React.FC<ProductAnalysisViewProps> = ({ product, anal
     !offer.offer_type.toLowerCase().includes('exchange')
   );
 
-  // Get competitor prices - check multiple possible locations and filter out Amazon
+  // Calculate minimum price with best bank offer
+  const bestOffer = otherOffers.reduce((best, offer) => {
+    const discount = (offer as any).discount_amount || 0;
+    const bestDiscount = (best as any)?.discount_amount || 0;
+    return discount > bestDiscount ? offer : best;
+  }, otherOffers[0]);
+
+  const bestDiscount = (bestOffer as any)?.discount_amount || 0;
+
+  const minPriceWithOffer = basePrice > 0 && bestDiscount > 0
+    ? basePrice - bestDiscount
+    : basePrice;
+
+  const formatPrice = (price: number): string => {
+    return price > 0 ? `₹${price.toLocaleString('en-IN')}` : 'N/A';
+  };
+
+  // Get competitor prices - check multiple possible locations and filter out the source platform
   const allCompetitorPrices = (product as any).competitor_prices ||
                               product.price_comparison?.alternative_prices ||
                               [];
   const competitorPrices = allCompetitorPrices.filter((comp: any) =>
-    !comp.site.toLowerCase().includes('amazon')
+    !comp.site.toLowerCase().includes(platformName.toLowerCase())
   );
 
-  // Get key highlights from structured data
-  const pros = (product as any).pros || [];
-  const cons = (product as any).cons || [];
+  // Get product images
+  const productImages = product.images || [];
+  const hasImages = productImages.length > 0;
+
+  // Carousel navigation
+  const nextImage = () => {
+    setCurrentImageIndex((prev) => (prev + 1) % productImages.length);
+  };
+
+  const prevImage = () => {
+    setCurrentImageIndex((prev) => (prev - 1 + productImages.length) % productImages.length);
+  };
 
   return (
     <div style={styles.container}>
@@ -67,125 +99,156 @@ const ProductAnalysisView: React.FC<ProductAnalysisViewProps> = ({ product, anal
         </div>
       </div>
 
-      {/* Pricing Section */}
+      {/* Pricing Section with Image Carousel */}
       <div style={styles.pricingSection}>
-        <h2 style={styles.sectionTitle}>💰 Pricing Overview</h2>
+        <h2 style={styles.sectionTitle}>💰 Product & Pricing Overview</h2>
 
-        <div style={styles.priceGrid}>
-          {/* Amazon Price without offers */}
-          <div style={styles.priceCard}>
-            <div style={styles.priceLabel}>Amazon Price</div>
-            <div style={styles.priceValue}>{product.price || 'N/A'}</div>
-            <div style={styles.priceSubtext}>Without offers</div>
-          </div>
+        <div style={styles.pricingSplitContainer}>
+          {/* Left Half: Image Carousel */}
+          <div style={styles.imageCarouselContainer}>
+            {hasImages ? (
+              <>
+                <div style={styles.carouselImageWrapper}>
+                  <img
+                    src={productImages[currentImageIndex]}
+                    alt={`${product.title} - ${currentImageIndex + 1}`}
+                    style={styles.carouselImage}
+                  />
 
-          {/* With Bank Offers */}
-          {otherOffers.length > 0 && (
-            <div style={{...styles.priceCard, ...styles.priceCardHighlight}}>
-              <div style={styles.priceLabel}>💳 With Bank Offers</div>
-              <div style={styles.priceValue}>{product.price || 'N/A'}</div>
-              <div style={styles.priceSubtext}>
-                {otherOffers.length} offer{otherOffers.length > 1 ? 's' : ''} available
-              </div>
-              <div style={styles.offersList}>
-                {otherOffers.slice(0, 2).map((offer, idx) => (
-                  <div key={idx} style={styles.offerBadge}>
-                    {offer.bank}: {offer.offer_type}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Competitor Prices */}
-          {competitorPrices.length > 0 && (
-            <div style={styles.priceCard}>
-              <div style={styles.priceLabel}>🔍 Competitor Prices</div>
-              <div style={styles.competitorList}>
-                {competitorPrices.map((competitor, idx) => (
-                  <div key={idx} style={styles.competitorItem}>
-                    <div style={styles.competitorSite}>{competitor.site}</div>
-                    <div style={styles.competitorPrice}>{competitor.price}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* All Bank Offers */}
-        {bankOffers.length > 0 && (
-          <div style={styles.allOffersSection}>
-            <h3 style={styles.subsectionTitle}>Available Offers</h3>
-            <div style={styles.offersGrid}>
-              {bankOffers.map((offer, idx) => (
-                <div key={idx} style={styles.offerCard}>
-                  <div style={styles.offerHeader}>
-                    <span style={styles.offerBank}>{offer.bank}</span>
-                    <span style={styles.offerType}>{offer.offer_type}</span>
-                  </div>
-                  <div style={styles.offerDescription}>{offer.description}</div>
-                  {offer.terms && (
-                    <div style={styles.offerTerms}>T&C: {offer.terms}</div>
+                  {/* Navigation Buttons */}
+                  {productImages.length > 1 && (
+                    <>
+                      <button
+                        onClick={prevImage}
+                        style={{...styles.carouselButton, ...styles.carouselButtonPrev}}
+                      >
+                        ‹
+                      </button>
+                      <button
+                        onClick={nextImage}
+                        style={{...styles.carouselButton, ...styles.carouselButtonNext}}
+                      >
+                        ›
+                      </button>
+                    </>
                   )}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
 
-      {/* Key Highlights Section */}
-      <div style={styles.highlightsSection}>
-        <h2 style={styles.sectionTitle}>✨ Key Highlights</h2>
+                {/* Thumbnail Navigation */}
+                {productImages.length > 1 && (
+                  <div style={styles.thumbnailContainer}>
+                    {productImages.map((img, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => setCurrentImageIndex(idx)}
+                        style={{
+                          ...styles.thumbnail,
+                          ...(idx === currentImageIndex ? styles.thumbnailActive : {})
+                        }}
+                      >
+                        <img src={img} alt={`Thumbnail ${idx + 1}`} style={styles.thumbnailImage} />
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-        <div style={styles.highlightsGrid}>
-          {/* Product Info */}
-          <div style={styles.highlightCard}>
-            <h3 style={styles.highlightTitle}>📦 Product Info</h3>
-            <div style={styles.infoList}>
-              <div style={styles.infoItem}>
-                <span style={styles.infoLabel}>ASIN:</span>
-                <span style={styles.infoValue}>{product.asin}</span>
+                {/* Image Counter */}
+                <div style={styles.imageCounter}>
+                  {currentImageIndex + 1} / {productImages.length}
+                </div>
+              </>
+            ) : (
+              <div style={styles.noImagePlaceholder}>
+                <div style={styles.noImageIcon}>📷</div>
+                <div style={styles.noImageText}>No images available</div>
               </div>
-              {product.brand && (
-                <div style={styles.infoItem}>
-                  <span style={styles.infoLabel}>Brand:</span>
-                  <span style={styles.infoValue}>{product.brand}</span>
-                </div>
-              )}
-              {product.rating && (
-                <div style={styles.infoItem}>
-                  <span style={styles.infoLabel}>Rating:</span>
-                  <span style={styles.infoValue}>{product.rating} ⭐</span>
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
-          {/* Pros */}
-          {pros.length > 0 && (
-            <div style={styles.highlightCard}>
-              <h3 style={styles.highlightTitle}>✅ Top Pros</h3>
-              <ul style={styles.highlightList}>
-                {pros.slice(0, 5).map((pro: string, idx: number) => (
-                  <li key={idx} style={styles.highlightListItem}>{pro}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* Right Half: Pricing & Offers */}
+          <div style={styles.pricingContainer}>
+            {/* Pricing Cards */}
+            <div style={styles.priceGrid}>
+              {/* Platform Pricing Card */}
+              <div style={{...styles.priceCard, ...styles.priceCardMain}}>
+                <div style={styles.priceCardHeader}>
+                  <div style={styles.priceLabel}>{platformIcon} {platformName} Price</div>
+                </div>
 
-          {/* Cons */}
-          {cons.length > 0 && (
-            <div style={styles.highlightCard}>
-              <h3 style={styles.highlightTitle}>⚠️ Top Cons</h3>
-              <ul style={styles.highlightList}>
-                {cons.slice(0, 5).map((con: string, idx: number) => (
-                  <li key={idx} style={styles.highlightListItem}>{con}</li>
-                ))}
-              </ul>
+                <div style={styles.pricingRows}>
+                  {/* Regular Price */}
+                  <div style={styles.pricingRow}>
+                    <div style={styles.pricingRowLabel}>Regular Price:</div>
+                    <div style={styles.pricingRowValue}>{product.price || 'N/A'}</div>
+                  </div>
+
+                  {/* Best Price with Offers */}
+                  {otherOffers.length > 0 && bestDiscount > 0 && (
+                    <div style={{...styles.pricingRow, ...styles.pricingRowHighlight}}>
+                      <div style={styles.pricingRowLabel}>Best Price:</div>
+                      <div style={styles.pricingRowValueBest}>
+                        {formatPrice(minPriceWithOffer)}
+                        <span style={styles.savingsTextInline}>
+                          (Save ₹{bestDiscount.toLocaleString('en-IN')})
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Best Offer Badge */}
+                {bestOffer && bestDiscount > 0 && (
+                  <div style={styles.bestOfferBadge}>
+                    💳 {bestOffer.bank || 'Bank'} {bestOffer.offer_type}
+                  </div>
+                )}
+              </div>
+
+              {/* Competitor Prices */}
+              {competitorPrices.length > 0 && (
+                <div style={styles.priceCard}>
+                  <div style={styles.priceLabel}>🔍 Competitor Prices</div>
+                  <div style={styles.competitorList}>
+                    {competitorPrices.map((competitor, idx) => (
+                      <a
+                        key={idx}
+                        href={competitor.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={styles.competitorLink}
+                      >
+                        <div style={styles.competitorItem}>
+                          <div style={styles.competitorSite}>{competitor.site}</div>
+                          <div style={styles.competitorPrice}>{competitor.price}</div>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Bank Offers - Below Pricing in Right Column */}
+            {bankOffers.length > 0 && (
+              <div style={styles.offersInRightColumn}>
+                <h3 style={styles.offersRightColumnTitle}>💳 Available Offers</h3>
+                <div style={styles.offersRightColumnScroll}>
+                  {bankOffers.map((offer, idx) => (
+                    <div key={idx} style={styles.offerCardVertical}>
+                      <div style={styles.offerHeader}>
+                        <span style={styles.offerBank}>{offer.bank || 'Generic Offer'}</span>
+                        <span style={styles.offerType}>{offer.offer_type}</span>
+                      </div>
+                      <div style={styles.offerDescription}>{offer.description}</div>
+                      {offer.terms && (
+                        <div style={styles.offerTerms}>T&C: {offer.terms}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -193,7 +256,23 @@ const ProductAnalysisView: React.FC<ProductAnalysisViewProps> = ({ product, anal
       <div style={styles.analysisSection}>
         <h2 style={styles.sectionTitle}>📊 Complete Analysis</h2>
         <div style={styles.analysisContent}>
-          <ReactMarkdown>{analysis}</ReactMarkdown>
+          <div style={{
+            wordWrap: 'break-word',
+            overflowWrap: 'anywhere',
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-wrap',
+            maxWidth: '100%',
+          }}>
+            <ReactMarkdown
+              components={{
+                p: ({children}) => <p style={{margin: '1em 0', wordWrap: 'break-word', overflowWrap: 'anywhere'}}>{children}</p>,
+                pre: ({children}) => <pre style={{whiteSpace: 'pre-wrap', wordWrap: 'break-word', overflowWrap: 'anywhere', maxWidth: '100%', overflow: 'auto'}}>{children}</pre>,
+                code: ({children}) => <code style={{whiteSpace: 'pre-wrap', wordWrap: 'break-word', overflowWrap: 'anywhere'}}>{children}</code>,
+              }}
+            >
+              {analysis}
+            </ReactMarkdown>
+          </div>
         </div>
       </div>
     </div>
@@ -206,6 +285,8 @@ const styles = {
     borderRadius: '8px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
     overflow: 'hidden',
+    maxWidth: '100%',
+    width: '100%',
   },
 
   // Header
@@ -269,11 +350,131 @@ const styles = {
     marginBottom: '1.5rem',
     color: '#2c3e50',
   },
+
+  // Image Carousel
+  pricingSplitContainer: {
+    display: 'flex',
+    gap: '2rem',
+    flexWrap: 'wrap' as const,
+    marginBottom: '2rem',
+  },
+  imageCarouselContainer: {
+    flex: '1 1 45%',
+    minWidth: '300px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '1rem',
+  },
+  carouselImageWrapper: {
+    position: 'relative' as const,
+    width: '100%',
+    paddingBottom: '100%',
+    backgroundColor: '#f5f5f5',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+  },
+  carouselImage: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain' as const,
+  },
+  carouselButton: {
+    position: 'absolute' as const,
+    top: '50%',
+    transform: 'translateY(-50%)',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    border: 'none',
+    borderRadius: '50%',
+    width: '40px',
+    height: '40px',
+    fontSize: '24px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+    transition: 'all 0.3s ease',
+    zIndex: 10,
+  },
+  carouselButtonPrev: {
+    left: '10px',
+  },
+  carouselButtonNext: {
+    right: '10px',
+  },
+  thumbnailContainer: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(60px, 1fr))',
+    gap: '0.5rem',
+  },
+  thumbnail: {
+    width: '100%',
+    paddingBottom: '100%',
+    position: 'relative' as const,
+    cursor: 'pointer',
+    borderRadius: '4px',
+    overflow: 'hidden',
+    border: '2px solid transparent',
+    transition: 'border-color 0.2s ease',
+  },
+  thumbnailActive: {
+    borderColor: '#667eea',
+  },
+  thumbnailImage: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover' as const,
+  },
+  imageCounter: {
+    textAlign: 'center' as const,
+    fontSize: '0.875rem',
+    color: '#666',
+    fontWeight: '500' as const,
+  },
+  noImagePlaceholder: {
+    width: '100%',
+    paddingBottom: '100%',
+    position: 'relative' as const,
+    backgroundColor: '#f5f5f5',
+    borderRadius: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'column' as const,
+  },
+  noImageIcon: {
+    position: 'absolute' as const,
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    fontSize: '4rem',
+    opacity: 0.3,
+  },
+  noImageText: {
+    position: 'absolute' as const,
+    top: '60%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    fontSize: '1rem',
+    color: '#999',
+    marginTop: '1rem',
+  },
+  pricingContainer: {
+    flex: '1 1 45%',
+    minWidth: '300px',
+  },
+
   priceGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
     gap: '1rem',
-    marginBottom: '2rem',
   },
   priceCard: {
     backgroundColor: 'white',
@@ -282,9 +483,52 @@ const styles = {
     border: '2px solid #e0e0e0',
     textAlign: 'center' as const,
   },
+  priceCardMain: {
+    border: '2px solid #4CAF50',
+    backgroundColor: '#f1f8f4',
+  },
+  priceCardHeader: {
+    marginBottom: '1rem',
+  },
   priceCardHighlight: {
     borderColor: '#4CAF50',
     backgroundColor: '#f1f8f4',
+  },
+  pricingRows: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '1rem',
+    marginBottom: '1rem',
+  },
+  pricingRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '0.75rem',
+    backgroundColor: 'white',
+    borderRadius: '6px',
+  },
+  pricingRowHighlight: {
+    backgroundColor: '#e8f5e9',
+    border: '1px solid #4CAF50',
+  },
+  pricingRowLabel: {
+    fontSize: '0.875rem',
+    color: '#666',
+    fontWeight: '600' as const,
+  },
+  pricingRowValue: {
+    fontSize: '1.5rem',
+    fontWeight: 'bold' as const,
+    color: '#2c3e50',
+  },
+  pricingRowValueBest: {
+    fontSize: '1.5rem',
+    fontWeight: 'bold' as const,
+    color: '#2e7d32',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'flex-end',
   },
   priceLabel: {
     fontSize: '0.875rem',
@@ -302,6 +546,29 @@ const styles = {
   priceSubtext: {
     fontSize: '0.875rem',
     color: '#888',
+  },
+  savingsText: {
+    fontSize: '1rem',
+    color: '#4CAF50',
+    fontWeight: '600' as const,
+    marginTop: '0.5rem',
+  },
+  savingsTextInline: {
+    fontSize: '0.875rem',
+    color: '#2e7d32',
+    fontWeight: '500' as const,
+    marginTop: '0.25rem',
+  },
+  bestOfferBadge: {
+    marginTop: '1rem',
+    fontSize: '0.85rem',
+    padding: '0.75rem 1rem',
+    backgroundColor: '#e8f5e9',
+    color: '#2e7d32',
+    borderRadius: '8px',
+    fontWeight: '600' as const,
+    textAlign: 'center' as const,
+    border: '1px solid #4CAF50',
   },
   offersList: {
     marginTop: '1rem',
@@ -329,17 +596,26 @@ const styles = {
     flexDirection: 'column' as const,
     gap: '0.75rem',
   },
+  competitorLink: {
+    textDecoration: 'none',
+    display: 'block',
+    transition: 'all 0.2s ease',
+    borderRadius: '4px',
+  },
   competitorItem: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '0.5rem 0',
+    padding: '0.75rem',
     borderBottom: '1px solid #e0e0e0',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    backgroundColor: 'transparent',
   },
   competitorSite: {
     fontSize: '0.875rem',
     fontWeight: '500' as const,
-    color: '#555',
+    color: '#1976d2',
   },
   competitorPrice: {
     fontSize: '1.125rem',
@@ -347,11 +623,69 @@ const styles = {
     color: '#2c3e50',
   },
 
+  // Offers in Right Column (Below Pricing) - Horizontal Carousel
+  offersInRightColumn: {
+    marginTop: '1rem',
+  },
+  offersRightColumnTitle: {
+    fontSize: '1.1rem',
+    fontWeight: 'bold' as const,
+    marginBottom: '1rem',
+    color: '#2c3e50',
+    margin: '0 0 1rem 0',
+  },
+  offersRightColumnScroll: {
+    display: 'flex',
+    flexDirection: 'row' as const,
+    gap: '1rem',
+    overflowX: 'auto' as const,
+    paddingBottom: '1rem',
+    scrollbarWidth: 'thin' as const,
+    scrollbarColor: '#1976d2 #f1f8f4',
+  },
+  offerCardVertical: {
+    backgroundColor: 'white',
+    padding: '1rem',
+    borderRadius: '8px',
+    border: '2px solid #1976d2',
+    minWidth: '280px',
+    maxWidth: '280px',
+    flexShrink: 0,
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+  },
+
+  // Old styles (kept for compatibility)
+  offersInColumn: {
+    backgroundColor: 'white',
+    padding: '1.5rem',
+    borderRadius: '8px',
+    border: '2px solid #e0e0e0',
+  },
+  offersColumnTitle: {
+    fontSize: '1.1rem',
+    fontWeight: 'bold' as const,
+    marginBottom: '1rem',
+    color: '#2c3e50',
+    margin: '0 0 1rem 0',
+  },
+  offersColumnScroll: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '0.75rem',
+    maxHeight: '400px',
+    overflowY: 'auto' as const,
+    paddingRight: '0.5rem',
+  },
+  offerCardCompact: {
+    backgroundColor: '#f8f9fa',
+    padding: '1rem',
+    borderRadius: '6px',
+    border: '1px solid #1976d2',
+  },
+
   // All Offers
   allOffersSection: {
     marginTop: '2rem',
-    paddingTop: '2rem',
-    borderTop: '2px solid #e0e0e0',
   },
   subsectionTitle: {
     fontSize: '1.25rem',
@@ -363,6 +697,28 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
     gap: '1rem',
+  },
+  offersCarouselWrapper: {
+    overflow: 'hidden',
+    position: 'relative' as const,
+  },
+  offersCarouselScroll: {
+    display: 'flex',
+    gap: '1rem',
+    overflowX: 'auto' as const,
+    paddingBottom: '1rem',
+    scrollbarWidth: 'thin' as const,
+    scrollbarColor: '#1976d2 #f1f8f4',
+  },
+  offerCardCarousel: {
+    backgroundColor: 'white',
+    padding: '1rem',
+    borderRadius: '8px',
+    border: '2px solid #1976d2',
+    minWidth: '300px',
+    maxWidth: '300px',
+    flexShrink: 0,
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
   },
   offerCard: {
     backgroundColor: 'white',
@@ -398,57 +754,6 @@ const styles = {
     fontStyle: 'italic' as const,
   },
 
-  // Highlights Section
-  highlightsSection: {
-    padding: '2rem',
-    backgroundColor: 'white',
-    borderBottom: '1px solid #e0e0e0',
-  },
-  highlightsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-    gap: '1.5rem',
-  },
-  highlightCard: {
-    backgroundColor: '#f8f9fa',
-    padding: '1.5rem',
-    borderRadius: '8px',
-    border: '1px solid #e0e0e0',
-  },
-  highlightTitle: {
-    fontSize: '1.125rem',
-    fontWeight: 'bold' as const,
-    marginBottom: '1rem',
-    color: '#2c3e50',
-  },
-  infoList: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '0.75rem',
-  },
-  infoItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  infoLabel: {
-    fontWeight: '600' as const,
-    color: '#666',
-  },
-  infoValue: {
-    color: '#2c3e50',
-  },
-  highlightList: {
-    margin: 0,
-    paddingLeft: '1.25rem',
-    listStyle: 'disc',
-  },
-  highlightListItem: {
-    marginBottom: '0.5rem',
-    color: '#555',
-    lineHeight: 1.5,
-  },
-
   // Analysis Section
   analysisSection: {
     padding: '2rem',
@@ -458,6 +763,12 @@ const styles = {
     fontSize: '1rem',
     lineHeight: 1.8,
     color: '#333',
+    wordWrap: 'break-word' as const,
+    overflowWrap: 'break-word' as const,
+    wordBreak: 'break-word' as const,
+    whiteSpace: 'normal' as const,
+    maxWidth: '100%',
+    overflow: 'hidden',
   },
 };
 

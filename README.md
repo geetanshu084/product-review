@@ -1,381 +1,211 @@
-# Amazon Product Analysis Agent
+# Product Analysis Agent
 
-An intelligent product analysis system with AI-powered insights, built with a modern backend/frontend architecture.
-
-## Architecture
-
-This project consists of two main components:
-
-```
-amazon-review/
-├── backend/          # Python backend (Streamlit app + core logic)
-├── frontend/         # React TypeScript frontend (in development)
-└── README.md         # This file
-```
-
-## Quick Start
-
-### Backend (Streamlit App)
-
-The backend contains the complete working Streamlit application with all features:
-
-```bash
-cd backend
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment variables
-cp .env.example .env
-# Edit .env and add your API keys
-
-# Start Redis
-redis-server
-
-# Run the application
-streamlit run app.py
-```
-
-See [backend/README.md](backend/README.md) for detailed backend documentation.
-
-### Frontend (React TypeScript)
-
-The frontend is a modern React TypeScript interface (currently in development):
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Environment is pre-configured in .env.development
-# For custom settings, create .env.local (see frontend/ENVIRONMENT_SETUP.md)
-
-# Run development server
-npm run dev
-```
-
-See [frontend/README.md](frontend/README.md) and [frontend/ENVIRONMENT_SETUP.md](frontend/ENVIRONMENT_SETUP.md) for detailed documentation.
+An AI-powered product analysis platform that scrapes e-commerce product data from Amazon and Flipkart, analyzes it using LLMs, and provides comprehensive insights through a modern web interface.
 
 ## Features
 
-### ✅ Product Analysis
-- **Amazon Scraper**: Extracts product details, reviews, ratings
-- **AI Analysis**: Google Gemini-powered insights with pros/cons
-- **Price Comparison**: Multi-platform price checking (Amazon, Flipkart, etc.)
-- **External Reviews**: Aggregates reviews from tech blogs, Reddit, YouTube
+### Core Capabilities
+- **Multi-Platform Support**: Analyze products from Amazon and Flipkart
+- **AI-Powered Analysis**: Comprehensive product evaluation using Google Gemini LLM
+- **Price Comparison**: Find best deals across multiple platforms
+- **Web Search Integration**: External reviews, Reddit discussions, and news aggregation
+- **Interactive Chat**: Ask questions about products using LangChain-powered Q&A
+- **Redis Caching**: Fast data retrieval with 24-hour cache
+- **Rich UI**: Modern React TypeScript interface with real-time updates
 
-### ✅ Interactive Q&A
-- **LangChain Agent**: Context-aware question answering
-- **Persistent Memory**: Redis-backed chat history
-- **Smart Search**: LLM decides when to search the web
-- **Rich Responses**: Formatted answers with product links
-
-### ✅ Web Search Integration
-- External review analysis
-- Reddit discussions
-- YouTube video reviews
-- Sentiment analysis
-- Red flag detection
+### Analysis Components
+- Executive Summary
+- Product Details & Specifications
+- Price Analysis (current platform + competitors)
+- Pros & Cons (categorized by Quality, Performance, Value, Features, Design)
+- Bank Offers & Discounts
+- Seller/Brand Analysis
+- External Reviews & Reddit Discussions
+- Red Flags & Key Findings
+- AI-generated Recommendations
 
 ## Technology Stack
 
 ### Backend
-- **Python 3.9+**
-- **Streamlit** - Web interface
-- **LangChain** - Agent framework
-- **Google Gemini** - LLM (gemini-2.0-flash-exp)
-- **Redis** - Caching and chat history
-- **BeautifulSoup4** - Web scraping
-- **Serper API** - Web search
+- **Framework**: FastAPI (Python 3.9+)
+- **LLM Integration**: LangChain + Google Gemini
+- **Scraping**: BeautifulSoup4, Requests
+- **Caching**: Redis
+- **Data Processing**: Pandas, NumPy
+- **Workflow**: LangGraph for orchestration
 
-### Frontend (In Development)
-- **React 18**
-- **TypeScript**
-- **Vite** - Build tool
-- **Axios** - HTTP client
-- **React Context** - State management
+### Frontend
+- **Framework**: React 18 with TypeScript
+- **Build Tool**: Vite
+- **Styling**: CSS-in-JS (inline styles)
+- **HTTP Client**: Axios
+- **State Management**: React Context API
+- **Query Management**: TanStack Query (React Query)
+- **Routing**: React Router v6
+- **Markdown Rendering**: react-markdown
 
-## Prerequisites
-
-- Python 3.9 or higher
-- Node.js 18+ (for frontend)
-- Redis server
-- Google API Key (Gemini)
-- Serper API Key (optional, for web search)
-
-## Installation
-
-### 1. Clone the Repository
-```bash
-git clone <repository-url>
-cd amazon-review
-```
-
-### 2. Backend Setup
-```bash
-cd backend
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env and add:
-# - GOOGLE_API_KEY
-# - SERPER_API_KEY (optional)
-# - REDIS_HOST, REDIS_PORT
-```
-
-### 3. Start Redis
-```bash
-# macOS with Homebrew
-brew services start redis
-
-# Linux
-sudo systemctl start redis
-
-# Docker
-docker run -d -p 6379:6379 --name redis redis:latest
-
-# Verify
-redis-cli ping  # Should return PONG
-```
-
-### 4. Run the Application
-```bash
-cd backend
-streamlit run app.py
-```
-
-Open http://localhost:8501 in your browser.
-
-### 5. Frontend Setup (Optional)
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open http://localhost:5000 in your browser.
-
-## Usage
-
-### 1. Analyze a Product
-
-1. Go to the **Product Analysis** tab
-2. Paste an Amazon product URL:
-   ```
-   https://amazon.in/dp/B0D79G62J3
-   ```
-3. Click **"Scrape & Analyze"**
-4. View comprehensive analysis with:
-   - Product details
-   - Pros and cons
-   - Price comparison
-   - External reviews
-   - AI recommendations
-
-### 2. Ask Questions
-
-1. Switch to the **Q&A Chat** tab
-2. Ask questions like:
-   - "What are the main complaints?"
-   - "Is this good value for money?"
-   - "Where can I buy this cheaper?"
-   - "Compare with similar products"
-3. Get AI-powered answers with context
-
-### 3. Review Analysis
-
-1. Go to the **Reviews** tab
-2. Filter by rating or verified purchases
-3. View:
-   - Amazon reviews
-   - External tech reviews
-   - Comparison articles
-   - Reddit discussions
-   - Summary with sentiment analysis
-
-## API Keys
-
-### Google Gemini API
-1. Visit https://makersuite.google.com/app/apikey
-2. Create API key
-3. Add to `.env` as `GOOGLE_API_KEY`
-
-### Serper API (Optional)
-1. Visit https://serper.dev/
-2. Sign up for free tier (2,500 searches/month)
-3. Add to `.env` as `SERPER_API_KEY`
+### Infrastructure
+- **API**: RESTful API with OpenAPI/Swagger docs
+- **CORS**: Configured for local development
+- **Environment**: .env configuration
+- **Development**: Hot reload for both frontend and backend
 
 ## Project Structure
 
 ```
 amazon-review/
-├── backend/
-│   ├── src/                      # Core source code
-│   │   ├── scraper.py           # Amazon scraper
-│   │   ├── analyzer.py          # Product analyzer
-│   │   ├── chatbot.py           # LangChain chatbot
-│   │   └── analysis/
-│   │       ├── price_comparison.py
-│   │       └── web_search.py
-│   ├── tests/                   # Test suite
-│   ├── config/                  # Configuration
-│   │   └── prompts/            # LLM prompts
-│   ├── app.py                   # Streamlit app
-│   ├── requirements.txt         # Dependencies
-│   └── README.md               # Backend docs
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/         # React components
-│   │   ├── contexts/          # State management
-│   │   ├── services/          # API client
-│   │   └── types/             # TypeScript types
-│   ├── package.json
-│   └── README.md              # Frontend docs
-│
-├── README.md                   # This file
-├── README_ARCHITECTURE.md      # Architecture details
-└── SETUP.md                    # Setup guide
+├── backend/          # Python FastAPI backend (see backend/README.md)
+└── frontend/         # React TypeScript frontend (see frontend/README.md)
 ```
+
+For detailed structure of backend and frontend, see their respective README files:
+- [Backend Structure](backend/README.md#directory-structure)
+- [Frontend Structure](frontend/README.md#project-structure)
+
+## Quick Start
+
+### Prerequisites
+- Python 3.9+
+- Node.js 18+
+- Redis server
+- Google Gemini API key (or other LLM provider)
+- Serper API key (for web search)
+
+### Setup
+
+**1. Backend Setup**
+```bash
+cd backend
+# Follow detailed setup instructions in backend/README.md
+```
+See [Backend README](backend/README.md#setup) for complete setup guide.
+
+**2. Frontend Setup**
+```bash
+cd frontend
+# Follow detailed setup instructions in frontend/README.md
+```
+See [Frontend README](frontend/README.md#setup) for complete setup guide.
+
+**3. Access the Application**
+- Backend API: http://localhost:8000
+- API Documentation: http://localhost:8000/api/v1/docs
+- Frontend UI: http://localhost:5002
+
+### Usage
+
+1. Open http://localhost:5002 in your browser
+2. Paste an Amazon or Flipkart product URL
+3. Click "Analyze Product"
+4. View comprehensive analysis, reviews, and pricing
+5. Use the Chat tab to ask questions about the product
+
+## Key Features Explained
+
+### Multi-Platform Scraping
+The system automatically detects the platform (Amazon/Flipkart) and uses the appropriate scraper with platform-specific selectors and LLM enhancement.
+
+### Intelligent Caching
+Redis caching prevents re-scraping the same product within 24 hours, significantly improving performance.
+
+### LLM-Powered Analysis
+- Uses Google Gemini (configurable to other providers)
+- Structured extraction for missing data
+- Sentiment analysis of reviews
+- Price trend analysis
+- Red flag detection
+
+### Price Comparison
+Searches across multiple platforms using Serper API to find the best deals and calculate potential savings.
+
+### Web Search Integration
+Aggregates external reviews, comparison articles, Reddit discussions, and news about the product for comprehensive context.
+
+### Interactive Chat
+LangChain-powered Q&A allows users to ask specific questions about the product with context-aware responses.
+
+## API Endpoints
+
+### Products
+- `POST /api/v1/products/scrape-and-analyze` - Scrape and analyze product
+- `GET /api/v1/products/{product_id}` - Get cached product data
+
+### Chat
+- `POST /api/v1/chat/ask` - Ask question about product
+- `GET /api/v1/chat/history/{session_id}` - Get chat history
+- `DELETE /api/v1/chat/clear/{session_id}` - Clear chat history
+
+See API documentation at http://localhost:8000/api/v1/docs for full details.
+
+## Configuration
+
+The application requires configuration for both backend and frontend:
+
+**Backend Configuration:**
+- LLM providers (Google Gemini, OpenAI, Anthropic, Ollama, Groq, Cohere)
+- API keys (LLM provider, Serper API)
+- Redis connection settings
+- Cache configuration
+
+See [Backend Configuration](backend/README.md#configuration) for detailed environment variables.
+
+**Frontend Configuration:**
+- API base URL
+- Timeout settings
+- Debug mode
+
+See [Frontend Configuration](frontend/README.md#configuration) for detailed environment variables.
 
 ## Documentation
 
-- [README_ARCHITECTURE.md](README_ARCHITECTURE.md) - Detailed architecture
-- [SETUP.md](SETUP.md) - Comprehensive setup guide
-- [backend/README.md](backend/README.md) - Backend documentation
-- [frontend/README.md](frontend/README.md) - Frontend documentation
-
-## Troubleshooting
-
-### Redis Connection Error
-```bash
-# Check if Redis is running
-redis-cli ping
-
-# Start Redis
-redis-server
-```
-
-### API Key Error
-- Verify `.env` file exists in `backend/`
-- Check API keys are valid
-- Ensure no extra spaces in `.env`
-
-### Module Not Found
-```bash
-cd backend
-pip install -r requirements.txt
-```
-
-### Scraping Fails
-- Verify Amazon URL is valid
-- Check internet connection
-- Amazon may block aggressive scraping
-- Try a different product
-
-## Features in Detail
-
-### Product Scraping
-- Extracts ASIN from URLs
-- Scrapes product details, reviews, ratings
-- Supports pagination (up to 200 reviews)
-- Redis caching for performance
-
-### AI Analysis
-- Google Gemini 2.0 Flash LLM
-- Structured markdown output
-- Price comparison integration
-- External review aggregation
-- Sentiment analysis
-
-### Price Comparison
-- Multi-platform checking
-- Amazon, Flipkart, eBay, Walmart
-- Best deal recommendations
-- Savings calculation
-
-### Web Search Integration
-- Tech blog reviews
-- Reddit discussions
-- YouTube videos
-- Issue tracking
-- Red flags detection
-
-### Interactive Chat
-- LangChain ReAct agent
-- Redis chat history
-- Context-aware responses
-- Rich link formatting
+- [Backend README](backend/README.md) - Backend architecture and development
+- [Frontend README](frontend/README.md) - Frontend structure and components
+- [LLM Providers](backend/docs/LLM_PROVIDERS.md) - LLM configuration guide
+- [Price Comparison](backend/docs/PRICE_COMPARISON.md) - Price comparison system
+- [Web Search Integration](backend/docs/WEB_SEARCH_INTEGRATION.md) - External data aggregation
 
 ## Development
 
-### Running Tests
+For detailed development guides, see:
+- [Backend Development Guide](backend/README.md#development) - Setup, running, testing, and adding features
+- [Frontend Development Guide](frontend/README.md#development) - Setup, running, HMR, and development tips
+
+## Troubleshooting
+
+### Common Issues
+
+**Redis Connection Issues**
 ```bash
-cd backend
-pytest
+redis-cli ping  # Should return PONG
+redis-server    # Start Redis if not running
 ```
 
-### Verify Setup
-```bash
-cd backend
-python verify_setup.py
-```
+**CORS Errors**
+- Backend is configured for ports 5000, 5001, 5002, and 3000
+- Update `BACKEND_CORS_ORIGINS` in `backend/api/core/config.py` if using different port
 
-### Code Structure
-- `src/scraper.py` - Amazon scraping logic
-- `src/analyzer.py` - LLM analysis
-- `src/chatbot.py` - Q&A system
-- `src/analysis/price_comparison.py` - Price checking
-- `src/analysis/web_search.py` - External reviews
+**Port Conflicts**
+- Vite automatically tries next available port if 5002 is in use
 
-## Limitations
-
-1. **Scraping**: Amazon HTML may change
-2. **Reviews**: Limited to 200 per product
-3. **Rate Limits**: Google Gemini API limits apply
-4. **Regions**: Optimized for Amazon India
-5. **Dynamic Content**: No JavaScript rendering
-
-## Future Enhancements
-
-- ✅ Price comparison (completed)
-- ✅ Web search integration (completed)
-- ✅ External reviews (completed)
-- ⏳ React frontend (in progress)
-- 📋 FastAPI backend (planned)
-- 📋 Sentiment visualization
-- 📋 PDF export
-- 📋 Product comparison
-- 📋 Price tracking
-
-## Contributing
-
-Contributions welcome! Please submit issues or pull requests.
+For detailed troubleshooting guides:
+- [Backend Troubleshooting](backend/README.md#troubleshooting)
+- [Frontend Troubleshooting](frontend/README.md#troubleshooting)
 
 ## License
 
-MIT License - For educational and personal use only.
+MIT License - see LICENSE file for details
 
-## Disclaimer
+## Contributing
 
-This tool is for personal use. Respect Amazon's Terms of Service. Do not scrape aggressively or for commercial purposes.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
----
+## Support
 
-**Built with:**
-- Python, Streamlit, LangChain, Google Gemini
-- React, TypeScript (frontend in development)
-- Redis, BeautifulSoup4, Serper API
-
-**Version:** 3.0.0 (Backend/Frontend Architecture)
-
-**Author:** AI Product Analysis Team
+For issues and questions:
+- Check existing documentation
+- Review API docs at http://localhost:8000/api/v1/docs
+- Check Redis logs for caching issues
+- Review browser console for frontend errors

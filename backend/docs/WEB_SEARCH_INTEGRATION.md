@@ -21,14 +21,11 @@ Complete analyzer for finding and processing external product information.
 - **Sentiment Analysis**: Overall sentiment (positive/negative/mixed) from external sources
 
 ### 2. Integration with ProductAnalyzer
-Added `enable_web_search` flag to ProductAnalyzer:
+Web search is automatically enabled when `SERPER_API_KEY` is set in environment:
 
 ```python
-analyzer = ProductAnalyzer(
-    google_api_key="...",
-    serper_api_key="...",
-    enable_web_search=True  # Enable external search
-)
+# Web search enabled automatically if SERPER_API_KEY exists in .env
+analyzer = ProductAnalyzer()
 ```
 
 ### 3. Data Storage
@@ -104,11 +101,8 @@ Analyzes all results → Returns: positive/negative/mixed
 ```python
 from src.analysis.web_search import WebSearchAnalyzer
 
-# Initialize
-analyzer = WebSearchAnalyzer(
-    serper_api_key="your_key",
-    gemini_api_key="your_key"
-)
+# Initialize (reads SERPER_API_KEY and GOOGLE_API_KEY from environment)
+analyzer = WebSearchAnalyzer()
 
 # Analyze product
 results = analyzer.analyze_product("Apple iPhone 15 Pro")
@@ -124,12 +118,8 @@ print(f"Sentiment: {results['overall_sentiment']}")
 ```python
 from src.analyzer import ProductAnalyzer
 
-# Initialize with web search enabled
-analyzer = ProductAnalyzer(
-    google_api_key="your_key",
-    serper_api_key="your_key",
-    enable_web_search=True
-)
+# Initialize analyzer (reads configuration from environment variables)
+analyzer = ProductAnalyzer()
 
 # Analyze product (includes web search automatically)
 analysis = analyzer.analyze_product(product_data)
@@ -396,17 +386,10 @@ SERPER_API_KEY=your_serper_api_key
 ### Enable/Disable Features
 
 ```python
-# Enable both price comparison and web search
-analyzer = ProductAnalyzer(
-    enable_price_comparison=True,
-    enable_web_search=True
-)
+# Both price comparison and web search are automatically enabled if SERPER_API_KEY exists
+analyzer = ProductAnalyzer()
 
-# Disable web search to save API calls
-analyzer = ProductAnalyzer(
-    enable_price_comparison=True,
-    enable_web_search=False
-)
+# To disable web search, simply don't set SERPER_API_KEY in your .env file
 
 # Per-analysis control
 analysis = analyzer.analyze_product(

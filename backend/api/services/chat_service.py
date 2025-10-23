@@ -15,12 +15,21 @@ class ChatService:
     """Service for chat/Q&A functionality"""
 
     def __init__(self):
-        """Initialize chatbot"""
-        try:
-            self.chatbot = ProductChatbot()
-        except Exception as e:
-            print(f"Error initializing chatbot: {str(e)}")
-            self.chatbot = None
+        """Initialize chatbot lazily"""
+        self._chatbot = None
+
+    @property
+    def chatbot(self):
+        """Lazy initialization of chatbot"""
+        if self._chatbot is None:
+            try:
+                self._chatbot = ProductChatbot()
+            except Exception as e:
+                print(f"Error initializing chatbot: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                raise ValueError(f"Chatbot initialization failed: {str(e)}")
+        return self._chatbot
 
     def ask_question(self, session_id: str, product_id: str, question: str) -> str:
         """
@@ -38,9 +47,6 @@ class ChatService:
             ValueError: If chatbot not available
             Exception: If query fails
         """
-        if not self.chatbot:
-            raise ValueError("Chatbot not available. Check configuration.")
-
         answer = self.chatbot.ask(session_id, product_id, question)
         return answer
 

@@ -6,9 +6,9 @@ Uses Google Gemini via LangChain to analyze Amazon product data
 import json
 import os
 from typing import Dict, Optional
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
+from src.llm_provider import get_llm
 from src.price_comparison import SerperPriceComparison
 from src.analysis.web_search import WebSearchAnalyzer
 
@@ -16,78 +16,39 @@ from src.analysis.web_search import WebSearchAnalyzer
 class ProductAnalyzer:
     """Analyzes product data using Google Gemini LLM"""
 
-    def __init__(
-        self,
-        credentials_path: Optional[str] = None,
-        model_name: str = "gemini-2.0-flash-exp",
-        google_api_key: Optional[str] = None,
-        serper_api_key: Optional[str] = None,
-        enable_price_comparison: bool = True,
-        enable_web_search: bool = True
-    ):
+    def __init__(self):
         """
         Initialize the product analyzer
 
-        Args:
-            credentials_path: Path to GCP service account JSON file (deprecated - use google_api_key instead)
-            model_name: Name of the Gemini model to use
-            google_api_key: Google API key for Gemini (recommended)
-            serper_api_key: Serper API key for price comparison and web search (optional)
-            enable_price_comparison: Whether to enable price comparison feature
-            enable_web_search: Whether to enable external web search for reviews
+        All configuration is read from environment variables:
+        - GOOGLE_API_KEY (or other provider key based on LLM_PROVIDER)
+        - SERPER_API_KEY (for price comparison and web search)
+        - LLM_PROVIDER (optional, defaults to 'google')
+        - LLM_MODEL (optional, uses provider defaults)
         """
-        # Check for API key first (recommended approach)
-        api_key = google_api_key or os.getenv('GOOGLE_API_KEY')
+        # Initialize LLM (uses environment variables automatically)
+        self.llm = get_llm(temperature=0.3)
 
-        if not api_key:
-            raise ValueError(
-                "Google API key is required. Please either:\n"
-                "1. Set GOOGLE_API_KEY environment variable in your .env file, or\n"
-                "2. Pass google_api_key parameter\n\n"
-                "Get your API key from: https://makersuite.google.com/app/apikey"
-            )
-
-        # Store API key for web search
-        self.api_key = api_key
-
-        # Initialize price comparison if enabled
-        self.enable_price_comparison = enable_price_comparison
+        # Initialize price comparison (always enabled if SERPER_API_KEY exists)
         self.price_comparer = None
+        try:
+            self.price_comparer = SerperPriceComparison()
+            print("✓ Price comparison enabled")
+        except ValueError:
+            print("⚠ SERPER_API_KEY not found - price comparison disabled")
+        except Exception as e:
+            print(f"⚠ Price comparison disabled: {str(e)}")
 
-        if enable_price_comparison:
-            serper_key = serper_api_key or os.getenv('SERPER_API_KEY')
-            if serper_key:
-                try:
-                    self.price_comparer = SerperPriceComparison(serper_key)
-                    print("✓ Price comparison enabled")
-                except Exception as e:
-                    print(f"⚠ Price comparison disabled: {str(e)}")
-                    self.price_comparer = None
-            else:
-                print("⚠ SERPER_API_KEY not found - price comparison disabled")
-
-        # Initialize web search analyzer if enabled
-        self.enable_web_search = enable_web_search
+        # Initialize web search analyzer (always enabled if SERPER_API_KEY exists)
         self.web_search_analyzer = None
-
-        if enable_web_search:
-            serper_key = serper_api_key or os.getenv('SERPER_API_KEY')
-            if serper_key:
-                try:
-                    self.web_search_analyzer = WebSearchAnalyzer(serper_key, api_key)
-                    print("✓ Web search analysis enabled")
-                except Exception as e:
-                    print(f"⚠ Web search disabled: {str(e)}")
-                    self.web_search_analyzer = None
-            else:
-                print("⚠ SERPER_API_KEY not found - web search disabled")
-
-        self.llm = ChatGoogleGenerativeAI(
-            model=model_name,
-            temperature=0.3,  # Lower temperature for more consistent analysis
-            convert_system_message_to_human=True,
-            google_api_key=api_key
-        )
+        try:
+            # WebSearchAnalyzer reads both SERPER_API_KEY and GOOGLE_API_KEY from environment
+            self.web_search_analyzer = WebSearchAnalyzer()
+            print("✓ Web search analysis enabled")
+        except ValueError:
+            print("⚠ API keys not found - web search disabled")
+        except Exception as e:
+            print(f"⚠ Web search disabled: {str(e)}")
 
         # Load prompt template
         prompt_path = os.path.join(

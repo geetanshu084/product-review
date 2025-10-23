@@ -112,7 +112,7 @@ const AppContent: React.FC = () => {
       </main>
 
       <footer style={styles.footer}>
-        <p>Powered by FastAPI, LangChain, and Google Gemini 🚀</p>
+        <p>Powered by geetanshu.ai 🚀</p>
       </footer>
     </div>
   );

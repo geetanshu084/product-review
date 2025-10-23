@@ -62,3 +62,6 @@ htmlcov/
 # Project specific
 *.md.backup
 product_analysis_*.md
+
+# Claude Code
+CLAUDE.md

@@ -1,6 +1,6 @@
 """
 LLM-Based Product Data Extractor
-Uses Google Gemini to intelligently extract ALL product information from page content
+Uses configured LLM provider to intelligently extract ALL product information from page content
 """
 
 import json
@@ -8,30 +8,24 @@ import os
 import re
 from typing import Dict, Optional
 from bs4 import BeautifulSoup
-from langchain_google_genai import ChatGoogleGenerativeAI
+from src.llm_provider import get_llm
+from src.prompts import get_product_extraction_prompt
 
 
 class LLMProductExtractor:
     """Uses LLM to extract comprehensive product data from HTML content"""
 
-    def __init__(self, google_api_key: Optional[str] = None, model_name: str = "gemini-2.0-flash-exp"):
+    def __init__(self):
         """
         Initialize the LLM extractor
 
-        Args:
-            google_api_key: Google API key for Gemini
-            model_name: Name of the Gemini model to use
+        All configuration is read from environment variables:
+        - LLM_PROVIDER: LLM provider to use (google, openai, anthropic, etc.)
+        - LLM_MODEL: Model name (provider-specific)
+        - GOOGLE_API_KEY, OPENAI_API_KEY, etc.: Provider-specific API keys
         """
-        api_key = google_api_key or os.getenv('GOOGLE_API_KEY')
-
-        if not api_key:
-            raise ValueError("Google API key is required")
-
-        self.llm = ChatGoogleGenerativeAI(
-            model=model_name,
-            temperature=0.1,  # Low temperature for factual extraction
-            convert_system_message_to_human=True,
-            google_api_key=api_key
+        self.llm = get_llm(
+            temperature=0.1  # Low temperature for factual extraction
         )
 
     def clean_html_to_text(self, html_content: str) -> str:
@@ -126,118 +120,7 @@ class LLMProductExtractor:
         Returns:
             Formatted prompt string
         """
-        prompt = f"""You are an expert product data extraction system. Extract ALL available product information from the following Amazon product page content.
-
-IMPORTANT: Return ONLY a valid JSON object. Do not include any explanatory text before or after the JSON.
-
-Extract and structure the following information:
-
-1. **Basic Information**: ASIN, title, brand, price, rating, total reviews, category, availability
-2. **Product Details**: Dimensions, weight, color, material, model name/number, package contents, etc.
-3. **Specifications**: Technical specs like capacity, power, voltage, size, compatibility, etc.
-4. **Features**: All bullet points and key features mentioned
-5. **Description**: Product description text
-6. **Warranty**: Warranty information, duration, coverage
-7. **Bank Offers**: All bank offers, credit card offers, EMI options, cashback deals
-8. **Seller Information**: Seller name, rating, fulfillment method (FBA/FBM)
-9. **Images**: Extract any image URLs mentioned
-10. **Reviews Summary**: Extract key themes from customer reviews (positive/negative points)
-
-PRODUCT URL: {url}
-
-PRODUCT PAGE CONTENT:
-{page_text}
-
-Return the data in this EXACT JSON structure (include all fields, use null for missing data):
-
-```json
-{{
-  "asin": "string or null",
-  "url": "{url}",
-  "title": "string or null",
-  "brand": "string or null",
-  "category": "string or null",
-  "price": "string or null",
-  "rating": "string (e.g., '4.5/5') or null",
-  "total_reviews": "string or null",
-  "availability": "string or null",
-
-  "dimensions": "string or null",
-  "weight": "string or null",
-  "model_name": "string or null",
-  "model_number": "string or null",
-  "color": "string or null",
-  "material": "string or null",
-
-  "specifications": {{
-    "key": "value"
-  }},
-
-  "product_details": {{
-    "key": "value"
-  }},
-
-  "features": [
-    "feature 1",
-    "feature 2"
-  ],
-
-  "description": "string or null",
-
-  "warranty": {{
-    "duration": "string or null",
-    "coverage": "string or null",
-    "details": "string or null"
-  }},
-
-  "bank_offers": [
-    {{
-      "bank": "string",
-      "offer_type": "string (e.g., 'Cashback', 'EMI', 'Discount')",
-      "description": "string",
-      "terms": "string or null"
-    }}
-  ],
-
-  "seller_info": {{
-    "name": "string or null",
-    "rating": "string or null",
-    "fulfillment": "string (FBA/FBM) or null"
-  }},
-
-  "images": [
-    "url1",
-    "url2"
-  ],
-
-  "review_summary": {{
-    "positive_highlights": [
-      "point 1",
-      "point 2"
-    ],
-    "negative_highlights": [
-      "point 1",
-      "point 2"
-    ],
-    "common_themes": [
-      "theme 1",
-      "theme 2"
-    ]
-  }}
-}}
-```
-
-IMPORTANT RULES:
-1. Return ONLY the JSON object, no other text
-2. Ensure all string values are properly escaped
-3. Use null for missing data, not empty strings
-4. Extract ALL available information from the page
-5. For specifications and product_details, include as many key-value pairs as you can find
-6. For bank_offers, extract ALL offers mentioned (credit card, debit card, EMI, cashback, etc.)
-7. For review_summary, analyze the review snippets visible on the page
-"""
-
-        return prompt
+        return get_product_extraction_prompt(page_text, url)
 
 
 def test_llm_extractor():

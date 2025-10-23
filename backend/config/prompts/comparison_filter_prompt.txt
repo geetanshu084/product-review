@@ -1,0 +1,16 @@
+Analyze the following search results claiming to be comparisons involving "{product_name}".
+
+{context}
+
+Identify which items are ACTUAL COMPARISON ARTICLES (detailed comparisons with other products, vs articles, alternatives analysis) vs NON-COMPARISONS (single product reviews, product descriptions, general guides).
+
+Filter out:
+- Single product reviews (not comparing with others)
+- Product descriptions or specifications
+- Generic buying guides without specific comparisons
+- News articles
+- Articles that don't actually compare products
+
+Return ONLY the numbers (comma-separated) of items that are ACTUAL COMPARISONS. If none are actual comparisons, return "NONE".
+
+Example response: 2,4,6

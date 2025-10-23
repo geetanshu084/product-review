@@ -24,12 +24,13 @@ def check_dependencies():
     required_packages = [
         'requests',
         'bs4',
-        'streamlit',
         'langchain',
         'langchain_google_genai',
         'redis',
         'dotenv',
-        'lxml'
+        'lxml',
+        'fastapi',
+        'uvicorn'
     ]
 
     all_installed = True
@@ -90,14 +91,15 @@ def check_redis():
 def check_project_structure():
     """Check if all required files and directories exist"""
     required_paths = [
-        'app.py',
         'requirements.txt',
         '.env.example',
         'README.md',
         'src/scraper.py',
         'src/analyzer.py',
         'src/chatbot.py',
-        'config/prompts/product_analysis_prompt.txt'
+        'config/prompts/product_analysis_prompt.txt',
+        'api/main.py',
+        'api/routes/products.py'
     ]
 
     all_exist = True
@@ -142,8 +144,8 @@ def main():
     if all([python_ok, structure_ok, deps_ok, env_ok, redis_ok]):
         print("✓ ALL CHECKS PASSED! You're ready to run the application.")
         print()
-        print("Start the application with:")
-        print("  streamlit run app.py")
+        print("Start the FastAPI backend with:")
+        print("  python -m api.main")
     else:
         print("✗ SOME CHECKS FAILED. Please fix the issues above.")
         print()

@@ -18,19 +18,22 @@ router = APIRouter()
 @router.post("/scrape-and-analyze", response_model=AnalysisResponse)
 async def scrape_and_analyze_product(request: ScrapeRequest):
     """
-    Complete pipeline: Scrape → Search Competitors → Search Reviews → Structure → Analyze
+    UNIFIED: Complete pipeline with parallel execution + LLM analysis
 
-    This is the recommended endpoint that follows the complete flow:
-    1. Scrape Amazon page
-    2. Search internet for competitive prices
-    3. Search internet for external reviews/feedback
-    4. Send all data to LLM for structured extraction
-    5. Save structured data to Redis
-    6. Send to LLM for analysis
-    7. Return both structured data and analysis
+    This is the recommended endpoint that uses LangGraph for optimal performance:
+    1. Check Redis cache first
+    2. If NOT cached, run in parallel:
+       - Scrape Amazon page
+       - Search internet for competitive prices
+       - Search internet for external reviews/feedback
+    3. Combine results and save to Redis (24h cache)
+    4. Run LLM analysis on complete data
+    5. Return both structured data and analysis
+
+    Subsequent calls with same URL will use cached data (much faster!)
 
     Args:
-        request: ScrapeRequest with Amazon URL
+        request: ScrapeRequest with Amazon URL and optional flags
 
     Returns:
         AnalysisResponse with structured data and analysis
@@ -39,11 +42,11 @@ async def scrape_and_analyze_product(request: ScrapeRequest):
         # Convert HttpUrl to string
         url = str(request.url)
 
-        # Run complete pipeline
-        result = product_service.scrape_and_analyze(
+        # Run unified LangGraph workflow (parallel execution + analysis)
+        result = product_service.scrape_and_analyze_unified(
             url=url,
-            include_price_comparison=True,
-            include_web_search=True
+            include_price_comparison=request.include_price_comparison,
+            include_web_search=request.include_web_search
         )
 
         structured_data = result.get('structured_data', {})
@@ -51,7 +54,7 @@ async def scrape_and_analyze_product(request: ScrapeRequest):
 
         return AnalysisResponse(
             success=True,
-            message="Product scraped and analyzed successfully",
+            message="Product scraped and analyzed successfully (with parallel execution)",
             analysis=analysis,
             product_data=ProductData(**structured_data) if structured_data else None
         )
@@ -65,24 +68,35 @@ async def scrape_and_analyze_product(request: ScrapeRequest):
 @router.post("/scrape", response_model=ScrapeResponse)
 async def scrape_product(request: ScrapeRequest):
     """
-    Scrape product data from Amazon URL
+    NEW: Scrape product data with parallel execution using LangGraph
+
+    Runs in parallel:
+    - Amazon scraping
+    - Price comparison (if enabled)
+    - Web search for reviews (if enabled)
+
+    Results are combined and cached in Redis for 24 hours.
 
     Args:
-        request: ScrapeRequest with Amazon URL
+        request: ScrapeRequest with Amazon URL and optional flags
 
     Returns:
-        ScrapeResponse with product data
+        ScrapeResponse with complete product data (cached for future use)
     """
     try:
         # Convert HttpUrl to string
         url = str(request.url)
 
-        # Scrape product
-        product_data = product_service.scrape_product(url)
+        # Run LangGraph workflow with parallel execution
+        product_data = product_service.scrape_product(
+            url=url,
+            include_price_comparison=request.include_price_comparison,
+            include_web_search=request.include_web_search
+        )
 
         return ScrapeResponse(
             success=True,
-            message="Product scraped successfully",
+            message="Product scraped successfully (with parallel data collection)",
             data=ProductData(**product_data)
         )
 
@@ -95,16 +109,21 @@ async def scrape_product(request: ScrapeRequest):
 @router.post("/analyze", response_model=AnalysisResponse)
 async def analyze_product(request: AnalyzeRequest):
     """
-    Analyze already-scraped product using LLM
+    NEW: Analyze product using ONLY cached data (no re-scraping)
 
-    NOTE: This endpoint is for legacy compatibility.
-    For new requests, use /scrape-and-analyze which runs the complete pipeline.
+    If product data is already in Redis cache (from /scrape):
+    - Skip Amazon scraping
+    - Skip price comparison
+    - Skip web search
+    - Directly run LLM analysis on cached data
+
+    If NOT in cache, returns 404 (user should call /scrape first)
 
     Args:
-        request: AnalyzeRequest with ASIN and options
+        request: AnalyzeRequest with ASIN
 
     Returns:
-        AnalysisResponse with analysis and updated product data
+        AnalysisResponse with analysis based on cached data
     """
     try:
         # Get product data from cache
@@ -113,12 +132,28 @@ async def analyze_product(request: AnalyzeRequest):
         if not product_data:
             raise HTTPException(
                 status_code=404,
-                detail=f"Product with ASIN {request.asin} not found in cache. Please scrape first or use /scrape-and-analyze endpoint."
+                detail=f"Product with ASIN {request.asin} not found in cache. Please call /scrape endpoint first to collect product data."
             )
+
+        # Check if cached data has all requested components
+        has_price = "price_comparison" in product_data or "competitor_prices" in product_data
+        has_web_search = "web_search_analysis" in product_data
+
+        # Warn if missing requested data
+        warnings = []
+        if request.include_price_comparison and not has_price:
+            warnings.append("Price comparison data not in cache. Re-scrape with include_price_comparison=true.")
+        if request.include_web_search and not has_web_search:
+            warnings.append("Web search data not in cache. Re-scrape with include_web_search=true.")
 
         # Use orchestrator to analyze cached product
         if not product_service.orchestrator:
             raise ValueError("Orchestrator not available. Check GOOGLE_API_KEY.")
+
+        print(f"\n📊 Analyzing cached data for ASIN: {request.asin}")
+        if warnings:
+            for warning in warnings:
+                print(f"  ⚠ {warning}")
 
         # Run analysis on cached data
         result = product_service.orchestrator.process_product_sync(
@@ -130,9 +165,13 @@ async def analyze_product(request: AnalyzeRequest):
         structured_data = result.get('structured_data', product_data)
         analysis = result.get('analysis', '')
 
+        message = "Product analyzed successfully using cached data"
+        if warnings:
+            message += f" (Warnings: {'; '.join(warnings)})"
+
         return AnalysisResponse(
             success=True,
-            message="Product analyzed successfully",
+            message=message,
             analysis=analysis,
             product_data=ProductData(**structured_data) if structured_data else None
         )

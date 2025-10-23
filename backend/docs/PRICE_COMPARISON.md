@@ -53,8 +53,8 @@ For each product result:
 ```python
 from src.price_comparison import SerperPriceComparison
 
-# Initialize
-comparer = SerperPriceComparison(api_key="your_api_key")
+# Initialize (reads SERPER_API_KEY from environment)
+comparer = SerperPriceComparison()
 
 # Compare prices with exact match filtering (default)
 results = comparer.compare_prices(
@@ -146,17 +146,7 @@ python test_price_comparison.py
 
 ## Disabling Price Comparison
 
-To disable price comparison:
-
-1. **In code**:
-   ```python
-   analyzer = ProductAnalyzer(
-       google_api_key=key,
-       enable_price_comparison=False
-   )
-   ```
-
-2. **Without API key**: Simply don't set `SERPER_API_KEY` in `.env`
+To disable price comparison, simply don't set `SERPER_API_KEY` in `.env`. The `ProductAnalyzer` will automatically detect if the API key is missing and disable price comparison features.
 
 ## Troubleshooting
 

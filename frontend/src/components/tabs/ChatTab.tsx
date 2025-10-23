@@ -7,7 +7,7 @@ import { apiClient } from '@/services/api';
 import { useProduct } from '@/contexts/ProductContext';
 
 const ChatTab: React.FC = () => {
-  const { productData, sessionId, chatHistory, addChatMessage, clearChat } = useProduct();
+  const { productData, sessionId, chatHistory, addChatMessage, removeTypingIndicator, clearChat } = useProduct();
   const [question, setQuestion] = useState<string>('');
   const [isAsking, setIsAsking] = useState<boolean>(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -31,12 +31,18 @@ const ChatTab: React.FC = () => {
     // Add user message
     addChatMessage({ role: 'user', content: userQuestion });
 
+    // Add typing indicator as a temporary assistant message
+    addChatMessage({ role: 'assistant', content: '___TYPING___' });
+
     try {
       const response = await apiClient.askQuestion({
         session_id: sessionId,
         product_id: productData.asin,
         question: userQuestion,
       });
+
+      // Remove typing indicator before adding response
+      removeTypingIndicator();
 
       if (response.success) {
         addChatMessage({ role: 'assistant', content: response.answer });
@@ -47,6 +53,8 @@ const ChatTab: React.FC = () => {
         });
       }
     } catch (err: any) {
+      // Remove typing indicator before adding error message
+      removeTypingIndicator();
       addChatMessage({
         role: 'assistant',
         content: 'Sorry, an error occurred. Please try again.',
@@ -125,8 +133,21 @@ const ChatTab: React.FC = () => {
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
+    <>
+      <style>{`
+        @keyframes typingAnimation {
+          0%, 60%, 100% {
+            transform: translateY(0);
+            opacity: 0.7;
+          }
+          30% {
+            transform: translateY(-10px);
+            opacity: 1;
+          }
+        }
+      `}</style>
+      <div style={styles.container}>
+        <div style={styles.header}>
         <h3 style={styles.title}>💬 Ask Questions About This Product</h3>
         {chatHistory.length > 0 && (
           <button onClick={handleClearChat} style={styles.clearButton}>
@@ -163,7 +184,13 @@ const ChatTab: React.FC = () => {
                 <div style={styles.messageRole}>
                   {msg.role === 'user' ? '👤 You' : '🤖 Assistant'}
                 </div>
-                {msg.role === 'assistant' ? (
+                {msg.content === '___TYPING___' ? (
+                  <div style={styles.typingIndicator}>
+                    <span style={{...styles.typingDot, animationDelay: '0s'}}></span>
+                    <span style={{...styles.typingDot, animationDelay: '0.2s'}}></span>
+                    <span style={{...styles.typingDot, animationDelay: '0.4s'}}></span>
+                  </div>
+                ) : msg.role === 'assistant' ? (
                   formatMessage(msg.content)
                 ) : (
                   <p style={styles.messageText}>{msg.content}</p>
@@ -197,6 +224,7 @@ const ChatTab: React.FC = () => {
         </button>
       </form>
     </div>
+    </>
   );
 };
 
@@ -283,6 +311,8 @@ const styles = {
     margin: '0',
     lineHeight: '1.6',
     whiteSpace: 'pre-wrap' as const,
+    wordBreak: 'break-word' as const,
+    overflowWrap: 'break-word' as const,
   },
   linksContainer: {
     marginTop: '1rem',
@@ -330,6 +360,20 @@ const styles = {
     opacity: 0.5,
     cursor: 'not-allowed',
   },
+  typingIndicator: {
+    display: 'flex',
+    gap: '0.3rem',
+    alignItems: 'center',
+    padding: '0.5rem 0',
+  },
+  typingDot: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: '#666',
+    display: 'inline-block',
+    animation: 'typingAnimation 1.4s infinite ease-in-out',
+  } as React.CSSProperties & { animation: string },
 };
 
 export default ChatTab;

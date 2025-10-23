@@ -2,6 +2,17 @@
 FastAPI main application
 """
 
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables FIRST before any other imports
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
+
+# Disable Google Cloud ADC check - use API key instead
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = ''  # Disable ADC
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.core.config import settings

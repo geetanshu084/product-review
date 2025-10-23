@@ -23,8 +23,8 @@ def test_complete_workflow():
     test_url = "https://www.amazon.in/Native-Purifier-RO-Copper-Alkaline/dp/B0D7HG2GZD/ref=cm_cr_arp_d_product_top?ie=UTF8&th=1"
     print(f"\nTest URL: {test_url}\n")
 
-    # Step 1: Check Google API Key
-    print("Step 1: Checking Google API Key...")
+    # Step 1: Check configuration
+    print("Step 1: Checking environment configuration...")
     google_api_key = os.getenv('GOOGLE_API_KEY')
     if not google_api_key:
         print("❌ GOOGLE_API_KEY not found in .env file!")
@@ -55,10 +55,10 @@ def test_complete_workflow():
         return
 
     # Step 3: Analyze with LLM
-    print("\nStep 3: Analyzing product with Google Gemini...")
+    print("\nStep 3: Analyzing product with LLM...")
 
     try:
-        analyzer = ProductAnalyzer(google_api_key=google_api_key)
+        analyzer = ProductAnalyzer()
         print("✓ ProductAnalyzer initialized successfully")
 
         print("\nCalling LLM for analysis (this may take 10-30 seconds)...")

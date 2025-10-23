@@ -14,6 +14,7 @@ interface ProductContextType {
   chatHistory: ChatMessage[];
   setChatHistory: (history: ChatMessage[]) => void;
   addChatMessage: (message: ChatMessage) => void;
+  removeTypingIndicator: () => void;
   clearChat: () => void;
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
@@ -40,6 +41,10 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     setChatHistory((prev) => [...prev, message]);
   };
 
+  const removeTypingIndicator = () => {
+    setChatHistory((prev) => prev.filter(msg => msg.content !== '___TYPING___'));
+  };
+
   const clearChat = () => {
     setChatHistory([]);
   };
@@ -53,6 +58,7 @@ export const ProductProvider: React.FC<{ children: ReactNode }> = ({ children })
     chatHistory,
     setChatHistory,
     addChatMessage,
+    removeTypingIndicator,
     clearChat,
     isLoading,
     setIsLoading,

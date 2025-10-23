@@ -4,20 +4,21 @@ Orchestrates the complete flow: scrape → search competitors → search reviews
 """
 
 import json
-from typing import Dict, Optional
-from langchain_google_genai import ChatGoogleGenerativeAI
+from typing import Dict, Optional, List
 from langchain.prompts import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
-from typing import List
+from src.llm_provider import get_llm
+from src.prompts import get_structured_extraction_prompt, get_product_analysis_prompt
 
 
 class BankOfferModel(BaseModel):
     """Bank offer model"""
-    bank: str = Field(description="Bank name")
+    bank: Optional[str] = Field(default=None, description="Bank name (optional for generic offers)")
     offer_type: str = Field(description="Type of offer: Cashback, EMI, Discount, Exchange")
     description: str = Field(description="Offer description")
+    discount_amount: Optional[float] = Field(default=None, description="Numeric discount amount extracted from description (e.g., 3000 from '₹3,000 discount')")
     terms: Optional[str] = Field(default=None, description="Terms and conditions")
 
 
@@ -61,6 +62,7 @@ class StructuredProductData(BaseModel):
     red_flags: List[str] = Field(default_factory=list)
     pros: List[str] = Field(default_factory=list)
     cons: List[str] = Field(default_factory=list)
+    web_search_analysis: Optional[Dict] = None  # Complete web search data
 
 
 class ProductOrchestrator:
@@ -75,37 +77,25 @@ class ProductOrchestrator:
     7. Return both structured data and analysis
     """
 
-    def __init__(
-        self,
-        google_api_key: str,
-        serper_api_key: Optional[str] = None,
-        redis_client=None
-    ):
+    def __init__(self, redis_client=None):
         """
         Initialize orchestrator
 
+        All configuration is read from environment variables:
+        - LLM_PROVIDER: LLM provider to use (default: google)
+        - LLM_MODEL: Model name (optional)
+        - GOOGLE_API_KEY (or provider-specific key): For LLM operations
+
         Args:
-            google_api_key: Google API key for Gemini
-            serper_api_key: Serper API key for web search
-            redis_client: Redis client for caching
+            redis_client: Redis client for caching (optional)
         """
-        self.google_api_key = google_api_key
-        self.serper_api_key = serper_api_key
         self.redis_client = redis_client
 
         # Initialize LLM for structured extraction
-        self.extraction_llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
-            temperature=0.1,  # Low temp for factual extraction
-            google_api_key=google_api_key
-        )
+        self.extraction_llm = get_llm(temperature=0.1)  # Low temp for factual extraction
 
         # Initialize LLM for analysis
-        self.analysis_llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",
-            temperature=0.3,  # Slightly higher for analysis
-            google_api_key=google_api_key
-        )
+        self.analysis_llm = get_llm(temperature=0.3)  # Slightly higher for analysis
 
         # Initialize parsers
         self.json_parser = JsonOutputParser()
@@ -119,100 +109,7 @@ class ProductOrchestrator:
     def _create_extraction_chain(self):
         """Create LangChain chain for structured data extraction"""
 
-        extraction_template = """You are an expert product data extraction system. You will receive:
-1. Raw Amazon product page data
-2. Competitor price information from web search
-3. External reviews and feedback from web search
-
-Your task: Extract and structure ALL information into a clean, organized JSON format.
-
-RAW AMAZON DATA:
-{amazon_data}
-
-COMPETITOR PRICES (pre-processed and ready to use):
-{competitor_data}
-
-NOTE: The competitor_data contains a "competitor_prices" array that is already cleaned, formatted, and sorted.
-Simply copy this array directly into the output JSON's "competitor_prices" field.
-
-EXTERNAL REVIEWS & FEEDBACK:
-{external_reviews}
-
-Extract the following and return as valid JSON:
-
-{{
-  "asin": "product ASIN",
-  "title": "product title",
-  "brand": "brand name or null",
-  "price": "price string or null",
-  "rating": "rating (e.g., '4.5/5') or null",
-  "total_reviews": "number of reviews or null",
-  "category": "product category or null",
-  "availability": "availability status or null",
-
-  "description": "product description or null",
-  "features": ["feature 1", "feature 2"],
-  "specifications": {{"key": "value"}},
-  "product_details": {{"key": "value"}},
-  "images": ["url1", "url2"],
-
-  "bank_offers": [
-    {{
-      "bank": "bank name (e.g., HDFC, ICICI, SBI, Axis, etc.)",
-      "offer_type": "Cashback|EMI|Discount|Exchange",
-      "description": "offer description with discount amount",
-      "terms": "terms and conditions or null"
-    }}
-  ],
-
-  IMPORTANT: Extract ALL bank offers/discounts mentioned in the Amazon data. Look for:
-  - Bank cashback offers (e.g., "10% instant discount with HDFC Bank")
-  - No cost EMI offers
-  - Exchange offers
-  - Partner card offers
-  If NO bank offers are found in Amazon data, return empty array [].
-
-  "competitor_prices": [
-    {{
-      "site": "seller/platform name (e.g., Flipkart, Amazon.in, etc.)",
-      "price": "₹X,XXX or price as string with currency symbol",
-      "url": "product URL",
-      "availability": "In Stock|Out of Stock|availability status"
-    }}
-  ],
-
-  "reviews": [
-    {{
-      "rating": "rating string",
-      "title": "review title",
-      "text": "review text",
-      "date": "review date",
-      "verified_purchase": true/false
-    }}
-  ],
-
-  "external_reviews_summary": "summary of external reviews and feedback or null",
-
-  "key_findings": ["finding 1", "finding 2"],
-  "red_flags": ["red flag 1", "red flag 2"],
-  "pros": ["pro 1", "pro 2"],
-  "cons": ["con 1", "con 2"]
-}}
-
-CRITICAL INSTRUCTION FOR COMPETITOR_PRICES:
-The competitor_data JSON contains a "competitor_prices" array that is already pre-processed.
-Simply copy it directly to the output JSON's "competitor_prices" field WITHOUT any modifications.
-
-OTHER IMPORTANT NOTES:
-1. Return ONLY valid JSON, no other text
-2. Extract ALL available information
-3. Use null for missing data, not empty strings
-4. Combine insights from all three sources
-5. For reviews, include verified purchase status
-6. Analyze external reviews to extract pros, cons, key_findings, and red_flags
-
-{format_instructions}
-"""
+        extraction_template = get_structured_extraction_prompt()
 
         self.extraction_prompt = PromptTemplate(
             template=extraction_template,
@@ -278,73 +175,7 @@ OTHER IMPORTANT NOTES:
     def _create_analysis_chain(self):
         """Create LangChain chain for product analysis"""
 
-        analysis_template = """You are an expert product analyst. You will receive structured product data that includes:
-- Amazon product information
-- Bank offers and pricing
-- Competitor prices
-- Customer reviews (Amazon + external sources)
-- External feedback and discussions
-
-Your task: Provide a comprehensive, actionable analysis in markdown format.
-
-STRUCTURED PRODUCT DATA:
-```json
-{product_data}
-```
-
-Provide a detailed analysis with the following sections:
-
-# Product Analysis: {title}
-
-## 📊 Overview
-- Brief summary of the product
-- Category and brand
-- Current price and rating
-
-## 💰 Pricing Analysis
-- Amazon price breakdown
-- Bank offers available
-- Competitor price comparison
-- Best deal recommendation
-- Price-to-value assessment
-
-## ⭐ Customer Sentiment Analysis
-- Overall rating analysis
-- Positive highlights (what customers love)
-- Negative points (common complaints)
-- Verified vs unverified purchase insights
-- External review sentiment
-
-## ✅ Pros and Cons
-### Pros:
-- List key advantages
-
-### Cons:
-- List key disadvantages
-
-## 🚩 Red Flags & Concerns
-- Any issues to watch out for
-- Quality concerns
-- Delivery/availability issues
-
-## 🎯 Key Findings
-- Important insights from all sources
-- Unique features or standout aspects
-- Comparison with competitors
-
-## 🏆 Final Verdict
-- Is this product worth buying?
-- Who is this product best suited for?
-- Overall recommendation (Buy/Consider/Avoid)
-- Best purchase option (which offer/site)
-
-## 💡 Buying Tips
-- Best time to buy
-- Things to check before buying
-- Warranty and return policy notes
-
-Be specific, use data points, and provide actionable insights. Use emojis sparingly for section headers only.
-"""
+        analysis_template = get_product_analysis_prompt()
 
         self.analysis_prompt = PromptTemplate(
             template=analysis_template,
@@ -486,6 +317,15 @@ Be specific, use data points, and provide actionable insights. Use emojis sparin
                     print(f"  Sample: {comp_prices[0] if len(comp_prices) > 0 else 'None'}")
                 else:
                     print("  ⚠ No competitor_prices extracted by LLM!")
+
+                # Debug: Check bank offers
+                bank_offers = structured_data.get('bank_offers', [])
+                print(f"\n💳 DEBUG: LLM extracted bank_offers:")
+                print(f"  Count: {len(bank_offers)}")
+                if bank_offers:
+                    print(f"  Sample: {bank_offers[0]}")
+                else:
+                    print("  ⚠ No bank_offers extracted by LLM!")
             else:
                 print(f"  ⚠ structured_data is not a dict: {type(structured_data)}")
 
@@ -494,6 +334,11 @@ Be specific, use data points, and provide actionable insights. Use emojis sparin
             print(f"   Error details: {type(e).__name__}")
             # Fallback to raw data
             structured_data = amazon_raw_data
+
+        # Step 2.5: Attach complete web search data to structured_data
+        if external_reviews:
+            structured_data['web_search_analysis'] = external_reviews
+            print(f"\n📊 Attached web_search_analysis with {len(external_reviews.get('external_reviews', []))} external reviews")
 
         # Step 3: Save structured data to Redis
         if self.redis_client and amazon_raw_data.get('asin'):

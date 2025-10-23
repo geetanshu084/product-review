@@ -19,9 +19,10 @@ class Review(BaseModel):
 
 class BankOffer(BaseModel):
     """Bank offer model"""
-    bank: str
+    bank: Optional[str] = None  # Bank name (optional for generic offers)
     offer_type: str  # e.g., 'Cashback', 'EMI', 'Discount', 'Exchange'
     description: str
+    discount_amount: Optional[float] = None  # Numeric discount amount extracted from description
     terms: Optional[str] = None
 
 
@@ -53,7 +54,9 @@ class WebSearchAnalysis(BaseModel):
 
 class ProductData(BaseModel):
     """Product data model"""
-    asin: str
+    product_id: str  # Generic product ID (ASIN for Amazon, FSN for Flipkart, etc.)
+    platform: Optional[str] = None  # Platform name (Amazon, Flipkart, etc.)
+    asin: Optional[str] = None  # Amazon-specific ASIN (for backward compatibility)
     title: str
     brand: Optional[str] = None
     price: Optional[str] = None
@@ -67,7 +70,7 @@ class ProductData(BaseModel):
     bank_offers: List[BankOffer] = []
     competitor_prices: List[CompetitorPrice] = []
     price_comparison: Optional[PriceComparison] = None
-    web_search_analysis: Optional[WebSearchAnalysis] = None
+    web_search_analysis: Optional[Dict[str, Any]] = None  # Store complete web search data
 
 
 # Request Models
@@ -75,6 +78,8 @@ class ScrapeRequest(BaseModel):
     """Request to scrape a product"""
     url: HttpUrl
     session_id: Optional[str] = None
+    include_price_comparison: bool = True
+    include_web_search: bool = True
 
 
 class AnalyzeRequest(BaseModel):
@@ -108,7 +113,7 @@ class AnalysisResponse(BaseModel):
     """Response from analysis"""
     success: bool
     message: str
-    analysis: str
+    analysis: Optional[str] = ""
     product_data: Optional[ProductData] = None
 
 

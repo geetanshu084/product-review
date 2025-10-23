@@ -38,7 +38,8 @@ def test_web_search_analyzer():
     # Initialize analyzer
     print("\n📦 Initializing Web Search Analyzer...")
     try:
-        analyzer = WebSearchAnalyzer(serper_api_key, google_api_key)
+        # WebSearchAnalyzer reads API keys from environment
+        analyzer = WebSearchAnalyzer()
         print("✓ Web Search Analyzer initialized")
     except Exception as e:
         print(f"❌ Failed to initialize: {str(e)}")
@@ -148,12 +149,7 @@ def test_analyzer_integration():
 
     print("\n📦 Initializing ProductAnalyzer with web search...")
     try:
-        analyzer = ProductAnalyzer(
-            google_api_key=google_api_key,
-            serper_api_key=serper_api_key,
-            enable_price_comparison=True,
-            enable_web_search=True
-        )
+        analyzer = ProductAnalyzer()
         print("✓ ProductAnalyzer initialized")
     except Exception as e:
         print(f"❌ Failed to initialize: {str(e)}")

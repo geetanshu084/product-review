@@ -18,8 +18,12 @@ class Settings(BaseSettings):
     # CORS Origins
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:5000",  # React dev server
+        "http://localhost:5001",  # Alternative port
+        "http://localhost:5002",  # Alternative port
         "http://localhost:3000",  # Alternative port
         "http://127.0.0.1:5000",
+        "http://127.0.0.1:5001",
+        "http://127.0.0.1:5002",
         "http://127.0.0.1:3000",
     ]
 

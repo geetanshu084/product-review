@@ -53,14 +53,8 @@ def example_analysis(product_data):
     print("EXAMPLE 2: Analyzing Product with AI")
     print("=" * 60)
 
-    # Get Google API key
-    google_api_key = os.getenv('GOOGLE_API_KEY')
-    if not google_api_key:
-        print("\n✗ GOOGLE_API_KEY not found in .env")
-        return None
-
-    # Initialize analyzer
-    analyzer = ProductAnalyzer(google_api_key=google_api_key)
+    # Initialize analyzer (reads configuration from environment variables)
+    analyzer = ProductAnalyzer()
 
     print("\nAnalyzing product with Google Gemini...")
 

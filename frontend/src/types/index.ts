@@ -60,11 +60,20 @@ export interface VideoReview {
   source: string;
 }
 
+export interface NewsArticle {
+  title: string;
+  snippet: string;
+  link: string;
+  source: string;
+  date?: string;
+}
+
 export interface WebSearchAnalysis {
   external_reviews: ExternalReview[];
   comparison_articles: ComparisonArticle[];
   issue_discussions: IssueDiscussion[];
   reddit_discussions: RedditDiscussion[];
+  news_articles: NewsArticle[];
   video_reviews: VideoReview[];
   key_findings: string[];
   red_flags: string[];
@@ -78,6 +87,7 @@ export interface WebSearchAnalysis {
 export interface ProductData {
   asin: string;
   title: string;
+  platform?: string; // e.g., 'Amazon', 'Flipkart'
   brand?: string;
   price?: string;
   rating?: string;

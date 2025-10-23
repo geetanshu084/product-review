@@ -8,7 +8,7 @@ import type { Review, ExternalReview } from '@/types';
 
 const ReviewsTab: React.FC = () => {
   const { productData } = useProduct();
-  const [activeSubTab, setActiveSubTab] = useState<'amazon' | 'external' | 'comparisons' | 'summary'>('amazon');
+  const [activeSubTab, setActiveSubTab] = useState<'platform' | 'external' | 'summary'>('platform');
   const [ratingFilter, setRatingFilter] = useState<number>(0);
   const [verifiedOnly, setVerifiedOnly] = useState<boolean>(false);
 
@@ -20,38 +20,48 @@ const ReviewsTab: React.FC = () => {
     );
   }
 
-  const amazonReviews = productData.reviews || [];
+  // Get platform name and icon
+  const platformName = productData.platform || 'Amazon';
+  const platformIcon = platformName === 'Flipkart' ? '🛍️' : '🛒';
+
+  const platformReviews = productData.reviews || [];
   const webSearch = productData.web_search_analysis;
 
-  // Filter Amazon reviews
-  const filteredReviews = amazonReviews.filter((review) => {
+  // Filter platform reviews (no removal, just apply user filters)
+  const filteredReviews = platformReviews.filter((review) => {
     const rating = parseFloat(review.rating.split(' ')[0] || '0');
     if (ratingFilter > 0 && rating !== ratingFilter) return false;
     if (verifiedOnly && !review.verified_purchase) return false;
     return true;
   });
 
+  // Merge external reviews, comparisons, Reddit discussions, and news articles
+  const externalReviews = webSearch?.external_reviews || [];
+  const comparisonArticles = webSearch?.comparison_articles || [];
+  const redditDiscussions = webSearch?.reddit_discussions || [];
+  const newsArticles = webSearch?.news_articles || [];
+  const mergedExternalContent = [
+    ...externalReviews.map(r => ({ ...r, type: 'review' as const })),
+    ...comparisonArticles.map(c => ({ ...c, type: 'comparison' as const, source: 'Comparison Article' })),
+    ...redditDiscussions.map(rd => ({ ...rd, type: 'reddit' as const })),
+    ...newsArticles.map(na => ({ ...na, type: 'news' as const }))
+  ];
+
   return (
     <div style={styles.container}>
       {/* Sub-tabs */}
       <div style={styles.subTabs}>
         <button
-          onClick={() => setActiveSubTab('amazon')}
-          style={activeSubTab === 'amazon' ? { ...styles.subTab, ...styles.subTabActive } : styles.subTab}
+          onClick={() => setActiveSubTab('platform')}
+          style={activeSubTab === 'platform' ? { ...styles.subTab, ...styles.subTabActive } : styles.subTab}
         >
-          🛒 Amazon Reviews ({amazonReviews.length})
+          {platformIcon} {platformName} Reviews ({platformReviews.length})
         </button>
         <button
           onClick={() => setActiveSubTab('external')}
           style={activeSubTab === 'external' ? { ...styles.subTab, ...styles.subTabActive } : styles.subTab}
         >
-          🌐 External Reviews ({webSearch?.external_reviews?.length || 0})
-        </button>
-        <button
-          onClick={() => setActiveSubTab('comparisons')}
-          style={activeSubTab === 'comparisons' ? { ...styles.subTab, ...styles.subTabActive } : styles.subTab}
-        >
-          🔍 Comparisons ({webSearch?.comparison_articles?.length || 0})
+          🌐 Reviews, Comparisons, Reddit & News ({mergedExternalContent.length})
         </button>
         <button
           onClick={() => setActiveSubTab('summary')}
@@ -61,8 +71,8 @@ const ReviewsTab: React.FC = () => {
         </button>
       </div>
 
-      {/* Amazon Reviews */}
-      {activeSubTab === 'amazon' && (
+      {/* Platform Reviews */}
+      {activeSubTab === 'platform' && (
         <div style={styles.content}>
           <div style={styles.filters}>
             <div style={styles.filterGroup}>
@@ -112,24 +122,46 @@ const ReviewsTab: React.FC = () => {
         </div>
       )}
 
-      {/* External Reviews */}
+      {/* External Reviews, Comparisons, Reddit & News (Merged) */}
       {activeSubTab === 'external' && (
         <div style={styles.content}>
-          {webSearch?.external_reviews && webSearch.external_reviews.length > 0 ? (
+          {mergedExternalContent.length > 0 ? (
             <div style={styles.reviewsList}>
-              {webSearch.external_reviews.map((review, idx) => (
+              {mergedExternalContent.map((item, idx) => (
                 <div key={idx} style={styles.externalCard}>
-                  <h4 style={styles.externalTitle}>{review.title}</h4>
-                  <p style={styles.externalSnippet}>{review.snippet}</p>
+                  <div style={styles.externalHeader}>
+                    <span style={
+                      item.type === 'review' ? styles.reviewBadge :
+                      item.type === 'comparison' ? styles.comparisonBadge :
+                      item.type === 'reddit' ? styles.redditBadge :
+                      styles.newsBadge
+                    }>
+                      {item.type === 'review' ? '📝 Review' :
+                       item.type === 'comparison' ? '🔍 Comparison' :
+                       item.type === 'reddit' ? '💬 Reddit Discussion' :
+                       '📰 News Article'}
+                    </span>
+                    {item.type === 'news' && (item as any).date && (
+                      <span style={styles.dateTag}>{(item as any).date}</span>
+                    )}
+                  </div>
+                  <h4 style={styles.externalTitle}>{item.title}</h4>
+                  <p style={styles.externalSnippet}>{item.snippet}</p>
                   <div style={styles.externalFooter}>
-                    <span style={styles.source}>Source: {review.source}</span>
+                    <span style={styles.source}>
+                      Source: {item.type === 'reddit' && (item as any).subreddit
+                        ? `r/${(item as any).subreddit}`
+                        : item.source}
+                    </span>
                     <a
-                      href={review.link}
+                      href={item.link}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={styles.link}
                     >
-                      Read More →
+                      {item.type === 'reddit' ? 'View Discussion →' :
+                       item.type === 'news' ? 'Read Article →' :
+                       'Read More →'}
                     </a>
                   </div>
                 </div>
@@ -137,35 +169,7 @@ const ReviewsTab: React.FC = () => {
             </div>
           ) : (
             <p style={styles.noResults}>
-              No external reviews found. Run analysis with "Include External Reviews" enabled.
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Comparisons */}
-      {activeSubTab === 'comparisons' && (
-        <div style={styles.content}>
-          {webSearch?.comparison_articles && webSearch.comparison_articles.length > 0 ? (
-            <div style={styles.reviewsList}>
-              {webSearch.comparison_articles.map((article, idx) => (
-                <div key={idx} style={styles.externalCard}>
-                  <h4 style={styles.externalTitle}>{article.title}</h4>
-                  <p style={styles.externalSnippet}>{article.snippet}</p>
-                  <a
-                    href={article.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={styles.link}
-                  >
-                    Read Comparison →
-                  </a>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p style={styles.noResults}>
-              No comparisons found. Run analysis with "Include External Reviews" enabled.
+              No external reviews, comparisons, Reddit discussions, or news found. Run analysis with "Include External Reviews" enabled.
             </p>
           )}
         </div>
@@ -325,6 +329,54 @@ const styles = {
     border: '1px solid #e0e0e0',
     borderRadius: '4px',
     backgroundColor: '#fafafa',
+  },
+  externalHeader: {
+    marginBottom: '0.75rem',
+  },
+  reviewBadge: {
+    display: 'inline-block',
+    padding: '0.25rem 0.75rem',
+    backgroundColor: '#4caf50',
+    color: 'white',
+    borderRadius: '12px',
+    fontSize: '0.75rem',
+    fontWeight: '600',
+  },
+  comparisonBadge: {
+    display: 'inline-block',
+    padding: '0.25rem 0.75rem',
+    backgroundColor: '#2196f3',
+    color: 'white',
+    borderRadius: '12px',
+    fontSize: '0.75rem',
+    fontWeight: '600',
+  },
+  redditBadge: {
+    display: 'inline-block',
+    padding: '0.25rem 0.75rem',
+    backgroundColor: '#ff4500',
+    color: 'white',
+    borderRadius: '12px',
+    fontSize: '0.75rem',
+    fontWeight: '600',
+  },
+  newsBadge: {
+    display: 'inline-block',
+    padding: '0.25rem 0.75rem',
+    backgroundColor: '#9c27b0',
+    color: 'white',
+    borderRadius: '12px',
+    fontSize: '0.75rem',
+    fontWeight: '600',
+  },
+  dateTag: {
+    display: 'inline-block',
+    padding: '0.25rem 0.5rem',
+    backgroundColor: '#e0e0e0',
+    color: '#666',
+    borderRadius: '8px',
+    fontSize: '0.7rem',
+    marginLeft: '0.5rem',
   },
   externalTitle: {
     margin: '0 0 0.75rem',
