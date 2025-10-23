@@ -82,13 +82,6 @@ class ScrapeRequest(BaseModel):
     include_web_search: bool = True
 
 
-class AnalyzeRequest(BaseModel):
-    """Request to analyze a product"""
-    asin: str
-    include_price_comparison: bool = True
-    include_web_search: bool = True
-
-
 class ChatRequest(BaseModel):
     """Request to ask a question"""
     session_id: str

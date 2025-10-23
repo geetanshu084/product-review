@@ -5,7 +5,6 @@
 import axios, { AxiosInstance } from 'axios';
 import type {
   ScrapeRequest,
-  AnalyzeRequest,
   AnalysisResponse,
   ChatRequest,
   ChatResponse,
@@ -50,19 +49,9 @@ class ApiClient {
 
   /**
    * Scrape and analyze product in one call
-   * Recommended for first-time product analysis
    */
   async scrapeAndAnalyze(request: ScrapeRequest): Promise<AnalysisResponse> {
     const response = await this.client.post<AnalysisResponse>('/products/scrape-and-analyze', request);
-    return response.data;
-  }
-
-  /**
-   * Re-analyze already-scraped product using cached data
-   * Use this to get fresh analysis without re-scraping
-   */
-  async analyzeProduct(request: AnalyzeRequest): Promise<AnalysisResponse> {
-    const response = await this.client.post<AnalysisResponse>('/products/analyze', request);
     return response.data;
   }
 

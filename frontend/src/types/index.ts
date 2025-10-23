@@ -108,12 +108,6 @@ export interface ScrapeRequest {
   session_id?: string;
 }
 
-export interface AnalyzeRequest {
-  asin: string;
-  include_price_comparison?: boolean;
-  include_web_search?: boolean;
-}
-
 export interface ChatRequest {
   session_id: string;
   product_id: string;
