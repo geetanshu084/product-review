@@ -198,7 +198,6 @@ Request → Check Cache → Route Based on Cache Status
   - Returns instantly if fully cached (<1s)
   - Runs LLM analysis only if data is cached but analysis is not
   - Runs full pipeline if nothing is cached
-- `GET /api/v1/products/{product_id}` - Get cached product data
 
 ### Chat
 - `POST /api/v1/chat/ask` - Ask question about product

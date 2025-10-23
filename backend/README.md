@@ -239,7 +239,7 @@ python example_usage.py
 
 ### Adding a New Analysis Section
 
-1. Update prompt template in `config/prompts/agent_prompt.txt`
+1. Update prompt template in `config/prompts/product_analysis_prompt.txt`
 2. No code changes required (LLM follows prompt structure)
 3. Test with multiple products
 
