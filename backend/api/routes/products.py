@@ -63,29 +63,3 @@ async def scrape_and_analyze_product(request: ScrapeRequest):
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
 
-@router.get("/product/{asin}", response_model=ProductData)
-async def get_product(asin: str):
-    """
-    Get product data by ASIN from cache
-
-    Args:
-        asin: Product ASIN
-
-    Returns:
-        ProductData
-    """
-    try:
-        product_data = product_service.get_product_from_cache(asin)
-
-        if not product_data:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Product with ASIN {asin} not found"
-            )
-
-        return ProductData(**product_data)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))

@@ -55,11 +55,6 @@ class ApiClient {
     return response.data;
   }
 
-  async getProduct(asin: string): Promise<ProductData> {
-    const response = await this.client.get<ProductData>(`/products/product/${asin}`);
-    return response.data;
-  }
-
   // Chat endpoints
   async askQuestion(request: ChatRequest): Promise<ChatResponse> {
     const response = await this.client.post<ChatResponse>('/chat/ask', request);
