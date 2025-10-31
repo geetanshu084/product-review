@@ -7,10 +7,98 @@ import ReactMarkdown from 'react-markdown';
 import { apiClient } from '@/services/api';
 import { useProduct } from '@/contexts/ProductContext';
 
+// Helper function to extract YouTube video ID from URL
+const getYouTubeVideoId = (url: string): string | null => {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+    /youtube\.com\/shorts\/([^&\n?#]+)/
+  ];
+
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+
+  return null;
+};
+
+// Helper function to extract YouTube URLs from markdown text
+const extractYouTubeLinks = (text: string): { url: string; title: string }[] => {
+  const linkPattern = /\[([^\]]+)\]\((https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)[^\)]+)\)/g;
+  const links: { url: string; title: string }[] = [];
+  let match;
+
+  while ((match = linkPattern.exec(text)) !== null) {
+    const title = match[1];
+    const url = match[2];
+    if (getYouTubeVideoId(url)) {
+      links.push({ url, title });
+    }
+  }
+
+  return links;
+};
+
+// YouTube embed component with thumbnail
+const YouTubeEmbed: React.FC<{
+  url: string;
+  title: string;
+  isPlaying: boolean;
+  onPlay: () => void;
+}> = ({ url, title, isPlaying, onPlay }) => {
+  const videoId = getYouTubeVideoId(url);
+
+  if (!videoId) return null;
+
+  // Show thumbnail with play button overlay by default
+  if (!isPlaying) {
+    return (
+      <div style={styles.videoContainer}>
+        <div style={styles.thumbnailWrapper}>
+          <img
+            src={`https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`}
+            alt={title}
+            style={styles.thumbnail}
+            onError={(e) => {
+              // Fallback to high quality thumbnail if maxresdefault not available
+              (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+            }}
+          />
+          <button
+            onClick={onPlay}
+            style={styles.thumbnailPlayButton}
+            className="thumbnail-play-btn"
+            aria-label="Play video"
+          >
+            <div style={styles.playIcon}>▶</div>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show actual iframe when playing
+  return (
+    <div style={styles.videoContainer}>
+      <iframe
+        width="100%"
+        height="315"
+        src={`https://www.youtube.com/embed/${videoId}?autoplay=1`}
+        title={title}
+        frameBorder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen
+        style={styles.videoIframe}
+      />
+    </div>
+  );
+};
+
 const ChatTab: React.FC = () => {
   const { productData, sessionId, chatHistory, addChatMessage, removeTypingIndicator, clearChat } = useProduct();
   const [question, setQuestion] = useState<string>('');
   const [isAsking, setIsAsking] = useState<boolean>(false);
+  const [playingVideos, setPlayingVideos] = useState<Record<string, boolean>>({});
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -176,6 +264,16 @@ const ChatTab: React.FC = () => {
         .clear-chat-btn:active {
           transform: scale(0.95);
         }
+
+        .thumbnail-play-btn:hover {
+          background-color: rgba(255, 0, 0, 0.9);
+          transform: translate(-50%, -50%) scale(1.1);
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+        }
+
+        .thumbnail-play-btn:active {
+          transform: translate(-50%, -50%) scale(0.95);
+        }
       `}</style>
       <div style={styles.container}>
         <div style={styles.header}>
@@ -204,31 +302,60 @@ const ChatTab: React.FC = () => {
         ) : (
           <div className="scrollable-content" style={styles.messages}>
             {chatHistory.map((msg, idx) => (
-              <div
-                key={idx}
-                style={
-                  msg.role === 'user'
-                    ? { ...styles.message, ...styles.userMessage }
-                    : { ...styles.message, ...styles.assistantMessage }
-                }
-              >
-                <div style={styles.messageRole}>
-                  {msg.role === 'user' ? '👤 You' : '🤖 Assistant'}
+              <React.Fragment key={idx}>
+                <div
+                  style={
+                    msg.role === 'user'
+                      ? { ...styles.message, ...styles.userMessage }
+                      : { ...styles.message, ...styles.assistantMessage }
+                  }
+                >
+                  <div style={styles.messageRole}>
+                    {msg.role === 'user' ? '👤 You' : '🤖 Assistant'}
+                  </div>
+                  {msg.content === '___TYPING___' ? (
+                    <div style={styles.typingIndicator}>
+                      <span style={{...styles.typingDot, animationDelay: '0s'}}></span>
+                      <span style={{...styles.typingDot, animationDelay: '0.2s'}}></span>
+                      <span style={{...styles.typingDot, animationDelay: '0.4s'}}></span>
+                    </div>
+                  ) : msg.role === 'assistant' ? (
+                    <div style={styles.markdownContainer}>
+                      {renderMarkdown(msg.content)}
+                    </div>
+                  ) : (
+                    <p style={styles.messageText}>{msg.content}</p>
+                  )}
                 </div>
-                {msg.content === '___TYPING___' ? (
-                  <div style={styles.typingIndicator}>
-                    <span style={{...styles.typingDot, animationDelay: '0s'}}></span>
-                    <span style={{...styles.typingDot, animationDelay: '0.2s'}}></span>
-                    <span style={{...styles.typingDot, animationDelay: '0.4s'}}></span>
-                  </div>
-                ) : msg.role === 'assistant' ? (
-                  <div style={styles.markdownContainer}>
-                    {renderMarkdown(msg.content)}
-                  </div>
-                ) : (
-                  <p style={styles.messageText}>{msg.content}</p>
-                )}
-              </div>
+                {/* YouTube videos outside message bubble - full width */}
+                {msg.role === 'assistant' && msg.content !== '___TYPING___' && (() => {
+                  const youtubeLinks = extractYouTubeLinks(msg.content);
+                  if (youtubeLinks.length === 0) return null;
+
+                  return (
+                    <div style={styles.videoSectionFullWidth}>
+                      {youtubeLinks.map((video, videoIdx) => {
+                        const videoKey = `${idx}-${videoIdx}`;
+                        const isPlaying = playingVideos[videoKey] || false;
+
+                        return (
+                          <div key={videoIdx} style={styles.videoItem}>
+                            <YouTubeEmbed
+                              url={video.url}
+                              title={video.title}
+                              isPlaying={isPlaying}
+                              onPlay={() => setPlayingVideos(prev => ({
+                                ...prev,
+                                [videoKey]: true
+                              }))}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </React.Fragment>
             ))}
             <div ref={chatEndRef} />
           </div>
@@ -472,6 +599,62 @@ const styles = {
     display: 'inline-block',
     animation: 'typingAnimation 1.4s infinite ease-in-out',
   } as React.CSSProperties & { animation: string },
+  videoSection: {
+    marginTop: '1rem',
+    paddingTop: '1rem',
+    borderTop: '1px solid #e0e0e0',
+  },
+  videoSectionFullWidth: {
+    width: '100%',
+    marginTop: '0.5rem',
+    marginBottom: '1rem',
+  },
+  videoItem: {
+    marginBottom: '0.75rem',
+  },
+  videoContainer: {
+    margin: '0.75rem 0',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+  },
+  videoIframe: {
+    borderRadius: '8px',
+    display: 'block',
+  },
+  thumbnailWrapper: {
+    position: 'relative' as const,
+    width: '100%',
+    cursor: 'pointer',
+  },
+  thumbnail: {
+    width: '100%',
+    height: 'auto',
+    display: 'block',
+    borderRadius: '8px',
+  },
+  thumbnailPlayButton: {
+    position: 'absolute' as const,
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    border: 'none',
+    borderRadius: '50%',
+    width: '80px',
+    height: '80px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    transition: 'all 0.3s ease',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
+  },
+  playIcon: {
+    color: 'white',
+    fontSize: '2rem',
+    marginLeft: '4px',
+  },
 };
 
 export default ChatTab;
