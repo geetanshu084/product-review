@@ -1,0 +1,13 @@
+Analyze the following external search results about "{product_name}" and provide key findings.
+
+{context}
+
+Extract 5-10 key findings that would help a buyer make a decision. Focus on:
+- Overall reception and reputation
+- Common praises
+- Common complaints
+- Expert opinions
+- Value for money consensus
+- Reliability and build quality mentions
+
+Return only the key findings as a numbered list, one finding per line.

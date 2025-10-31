@@ -1,0 +1,24 @@
+Analyze the following search results for news articles about "{product_name}".
+
+{context}
+
+Identify which items are ACTUAL NEWS ARTICLES (product launches, announcements, updates, industry news, press releases) vs NON-NEWS (reviews, comparisons, shopping guides, tutorials).
+
+Filter out:
+- Product reviews (those belong in review section)
+- Comparison articles (those belong in comparison section)
+- Shopping or buying guides
+- How-to tutorials or user guides
+- Old irrelevant news not about this specific product
+- Generic articles
+
+Keep only:
+- Product launch announcements
+- New feature updates
+- Press releases
+- Industry news about the product
+- Official announcements
+
+Return ONLY the numbers (comma-separated) of items that are ACTUAL NEWS ARTICLES. If none are news, return "NONE".
+
+Example response: 1,4,7

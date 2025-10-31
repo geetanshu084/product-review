@@ -1,0 +1,22 @@
+Analyze the following search results about "{product_name}".
+
+{context}
+
+IMPORTANT: Only keep items that are ACTUAL REDDIT POSTS from reddit.com. Filter out ANY content from other websites (Croma, Flipkart, YouTube, etc.).
+
+Identify which items are:
+1. ACTUAL REDDIT DISCUSSIONS (genuine user discussions from reddit.com, personal experiences, recommendations, questions about the product)
+2. NON-REDDIT or IRRELEVANT (content from Croma, Flipkart, YouTube, other websites, off-topic posts, spam)
+
+Filter out:
+- ANY content NOT from reddit.com (check source domain)
+- Content from Croma, Flipkart, YouTube, Amazon, or any other website
+- Off-topic Reddit discussions not about the specific product
+- Spam or promotional posts
+- Memes without substantive discussion
+- Posts that only mention the product in passing
+- Product descriptions
+
+Return ONLY the numbers (comma-separated) of items that are ACTUAL REDDIT POSTS from reddit.com AND relevant to the product. If none qualify, return "NONE".
+
+Example response: 2,3,6,8

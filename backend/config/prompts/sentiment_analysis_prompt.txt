@@ -1,0 +1,11 @@
+Based on these external search results about "{product_name}", provide a sentiment analysis.
+
+{context}
+
+Provide a JSON response with:
+1. sentiment: "positive", "negative", or "mixed"
+2. confidence: "high", "medium", or "low"
+3. summary: A brief 1-2 sentence summary of the overall sentiment
+
+Return ONLY valid JSON in this format:
+{{"sentiment": "...", "confidence": "...", "summary": "..."}}

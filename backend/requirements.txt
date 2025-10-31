@@ -1,0 +1,41 @@
+# Core Dependencies
+beautifulsoup4==4.12.3
+requests==2.32.5
+python-dotenv==1.0.1
+redis==5.0.1
+lxml==5.1.0
+selenium==4.16.0
+webdriver-manager==4.0.1
+fake-useragent==1.4.0
+
+# LangChain Core
+langchain==0.3.27
+langchain-community==0.3.31
+langchain-core==0.3.79
+langchain-text-splitters==0.3.11
+langgraph==0.2.76
+
+# LLM Providers (install based on your choice)
+# Google Gemini (default, always installed)
+langchain-google-genai==2.1.12
+
+# OpenAI (optional - uncomment if using OpenAI)
+# langchain-openai>=0.2.0
+
+# Anthropic Claude (optional - uncomment if using Anthropic)
+# langchain-anthropic>=0.3.0
+
+# Ollama (optional - uncomment if using Ollama for local models)
+# langchain-ollama>=0.2.0
+
+# Groq (optional - uncomment if using Groq)
+# langchain-groq>=0.2.0
+
+# Cohere (optional - uncomment if using Cohere)
+# langchain-cohere>=0.3.0
+
+# FastAPI Dependencies
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+pydantic==2.6.1
+pydantic-settings==2.1.0

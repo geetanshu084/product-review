@@ -1,0 +1,16 @@
+Analyze the following search results about "{product_name}" and identify any RED FLAGS or WARNINGS.
+
+{context}
+
+Look for:
+- Product recalls or safety issues
+- Widespread defects or failures
+- Scam or counterfeit warnings
+- Company reputation problems
+- Major quality control issues
+- False advertising claims
+- Security or privacy concerns
+
+Return ONLY serious red flags that would make someone reconsider purchasing. If no significant red flags are found, return "No major red flags detected".
+
+List each red flag on a separate line starting with "⚠️".
