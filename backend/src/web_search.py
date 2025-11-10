@@ -124,6 +124,26 @@ class WebSearchAnalyzer:
             'news_articles': results['news_articles']
         }
 
+    def _shorten_product_name(self, product_name: str) -> str:
+        """Shorten product name for better search results"""
+        import re
+
+        # Remove filler phrases
+        remove_phrases = [
+            r'\|.*?warranty', r'\|.*?years?', r'\|.*?service',
+            r'no service for.*?\|', r'\d+-year.*?\|', r'\d+-in-\d+.*?\|',
+            r'smart iot.*?\|', r'ro\+uv\+.*?\|',
+        ]
+
+        shortened = product_name
+        for phrase in remove_phrases:
+            shortened = re.sub(phrase, '', shortened, flags=re.IGNORECASE)
+
+        # Take first 2 meaningful parts
+        parts = [p.strip() for p in shortened.split('|') if len(p.strip()) > 10][:2]
+        result = ' '.join(parts) if parts else product_name[:100]
+        return ' '.join(result.split())
+
     def _search_and_process(self, query: str, search_type: str, source_platform: str) -> List[Dict]:
         """
         Complete search pipeline: search → filter → format
@@ -136,6 +156,18 @@ class WebSearchAnalyzer:
         Returns:
             List of formatted results
         """
+        # Shorten the query if it's too long (extract product name from query)
+        if len(query) > 150:
+            # Extract product name from query patterns like "Reviews of PRODUCT" or "PRODUCT vs"
+            import re
+            for pattern in [r'Reviews of (.+)', r'(.+) vs alternatives', r'(.+) problems', r'(.+) site:reddit', r'(.+) news']:
+                match = re.match(pattern, query, re.IGNORECASE)
+                if match:
+                    product_name = match.group(1).strip()
+                    short_name = self._shorten_product_name(product_name)
+                    query = query.replace(product_name, short_name)
+                    break
+
         # Perform search
         results = search(query, num_results=10)
 

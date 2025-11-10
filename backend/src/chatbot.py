@@ -21,6 +21,7 @@ load_dotenv(dotenv_path=env_path, override=True)
 from src.llm_provider import get_llm
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 from langchain_community.utilities import GoogleSerperAPIWrapper
+from langchain_community.tools import DuckDuckGoSearchResults
 from langchain.tools import Tool
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.agents import create_tool_calling_agent, AgentExecutor
@@ -51,58 +52,83 @@ class ProductChatbot:
             decode_responses=True
         )
 
-        # Initialize search tool (automatically gets SERPER_API_KEY from env)
-        search = GoogleSerperAPIWrapper()
+        # Initialize search tool based on SEARCH_PROVIDER env variable
+        search_provider = os.getenv('SEARCH_PROVIDER', 'duckduckgo').lower()
 
-        # Custom search function that returns URLs along with content
-        def search_with_urls(query: str) -> str:
-            """
-            Search and return results with URLs included
-
-            Args:
-                query: Search query string
-
-            Returns:
-                Formatted search results with titles and URLs
-            """
+        if search_provider == 'serper':
+            # Use Serper API (requires SERPER_API_KEY)
             try:
-                results = search.results(query)
+                search = GoogleSerperAPIWrapper()
 
-                # Format results to include URLs
-                formatted_results = []
+                def search_with_urls(query: str) -> str:
+                    """Search using Serper API and return results with URLs"""
+                    try:
+                        results = search.results(query)
+                        formatted_results = []
 
-                # Handle organic results
-                if 'organic' in results:
-                    for result in results['organic'][:5]:  # Top 5 results
-                        title = result.get('title', '')
-                        link = result.get('link', '')
-                        snippet = result.get('snippet', '')
+                        if 'organic' in results:
+                            for result in results['organic'][:5]:
+                                title = result.get('title', '')
+                                link = result.get('link', '')
+                                snippet = result.get('snippet', '')
+                                formatted_results.append(f"Title: {title}\nURL: {link}\nSnippet: {snippet}\n")
 
-                        formatted_results.append(f"Title: {title}\nURL: {link}\nSnippet: {snippet}\n")
+                        if 'videos' in results:
+                            for video in results['videos'][:5]:
+                                title = video.get('title', '')
+                                link = video.get('link', '')
+                                formatted_results.append(f"Video: {title}\nURL: {link}\n")
 
-                # Handle video results (YouTube)
-                if 'videos' in results:
-                    for video in results['videos'][:5]:  # Top 5 videos
-                        title = video.get('title', '')
-                        link = video.get('link', '')
+                        if not formatted_results:
+                            return search.run(query)
 
-                        formatted_results.append(f"Video: {title}\nURL: {link}\n")
+                        return "\n".join(formatted_results)
 
-                if not formatted_results:
-                    # Fallback to basic search if no structured results
-                    return search.run(query)
+                    except Exception as e:
+                        return f"Search error: {str(e)}"
 
-                return "\n".join(formatted_results)
+                search_tool = Tool(
+                    name="Search",
+                    description="Useful for searching the internet for current information about products, prices, availability, comparisons, or any up-to-date information. Input should be a search query string. Returns results with URLs.",
+                    func=search_with_urls
+                )
+                print("✓ Search tool: Serper (Google)")
 
             except Exception as e:
-                # Fallback to basic search on error
-                return search.run(query)
+                print(f"⚠ Serper API not available: {str(e)}. Falling back to DuckDuckGo.")
+                search_provider = 'duckduckgo'
 
-        search_tool = Tool(
-            name="Search",
-            description="Useful for searching the internet for current information about products, prices, availability, comparisons, or any up-to-date information. Input should be a search query string. Returns results with URLs.",
-            func=search_with_urls
-        )
+        if search_provider == 'duckduckgo':
+            # Use DuckDuckGo (free, no API key required)
+            from ddgs import DDGS
+
+            def ddg_search(query: str) -> str:
+                """Search using DuckDuckGo and return results with URLs"""
+                try:
+                    results = DDGS().text(query, max_results=5)
+
+                    formatted_results = []
+                    for result in results:
+                        title = result.get('title', '')
+                        link = result.get('href', '')
+                        snippet = result.get('body', '')
+                        formatted_results.append(f"Title: {title}\nURL: {link}\nSnippet: {snippet}\n")
+
+                    if not formatted_results:
+                        return "No results found"
+
+                    return "\n".join(formatted_results)
+
+                except Exception as e:
+                    return f"Search error: {str(e)}"
+
+            search_tool = Tool(
+                name="Search",
+                description="Useful for searching the internet for current information about products, prices, availability, comparisons, or any up-to-date information. Input should be a search query string. Returns results with URLs.",
+                func=ddg_search
+            )
+            print("✓ Search tool: DuckDuckGo (free)")
+
         self.tools = [search_tool]
 
         # Load system prompt template

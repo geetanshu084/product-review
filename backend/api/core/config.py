@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # Other API Keys
     SERPER_API_KEY: str = os.getenv("SERPER_API_KEY", "")
 
+    # Search Provider Configuration
+    SEARCH_PROVIDER: str = os.getenv("SEARCH_PROVIDER", "duckduckgo")
+
     def has_llm_configured(self) -> bool:
         """Check if any LLM provider is configured with an API key"""
         provider_keys = {

@@ -34,6 +34,9 @@ langchain-google-genai==2.1.12
 # Cohere (optional - uncomment if using Cohere)
 # langchain-cohere>=0.3.0
 
+# Search APIs
+ddgs>=1.0.0
+
 # FastAPI Dependencies
 fastapi==0.109.2
 uvicorn[standard]==0.27.1

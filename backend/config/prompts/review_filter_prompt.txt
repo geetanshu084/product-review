@@ -1,17 +1,21 @@
-Analyze the following search results claiming to be reviews of "{product_name}".
+Analyze the following search results about "{product_name}".
 
 {context}
 
-Identify which items are ACTUAL PRODUCT REVIEWS (genuine user experiences, expert reviews, hands-on tests) vs NON-REVIEWS (product descriptions, specifications, how-to guides, news articles, general articles).
+Identify which items could contain USEFUL INFORMATION about the product. Be LENIENT - include items that might have reviews, user experiences, comparisons, or product opinions.
 
-Filter out:
-- Product descriptions or specifications
-- Generic "how to use" guides
-- News articles about the product launch
-- List articles that don't contain actual reviews
-- Articles that just describe features without testing
-- Also filter out items from brand of the product
+INCLUDE:
+- Actual product reviews (user experiences, expert reviews)
+- Articles that mention product experiences or testing
+- Comparison articles that include this product
+- Discussion threads about the product
+- Any content with opinions or feedback about the product
 
-Return ONLY the numbers (comma-separated) of items that are ACTUAL REVIEWS. If none are actual reviews, return "NONE".
+Filter out ONLY:
+- Pure specifications without any opinions
+- Generic brand pages
+- Completely unrelated products
 
-Example response: 1,3,5,7
+Return the numbers (comma-separated) of items that are RELEVANT. If most items could be relevant, include them all.
+
+Example response: 1,2,3,5,7

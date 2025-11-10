@@ -1,16 +1,20 @@
-Analyze the following search results claiming to be comparisons involving "{product_name}".
+Analyze the following search results about "{product_name}" and comparisons.
 
 {context}
 
-Identify which items are ACTUAL COMPARISON ARTICLES (detailed comparisons with other products, vs articles, alternatives analysis) vs NON-COMPARISONS (single product reviews, product descriptions, general guides).
+Identify which items could help understand how this product compares to alternatives. Be LENIENT - include any items that mention alternatives, comparisons, or similar products.
 
-Filter out:
-- Single product reviews (not comparing with others)
-- Product descriptions or specifications
-- Generic buying guides without specific comparisons
-- News articles
-- Articles that don't actually compare products
+INCLUDE:
+- Comparison articles (vs, versus, compared to)
+- Reviews that mention alternative products
+- Buying guides that list multiple options
+- Articles discussing product alternatives
+- Any content that helps understand product positioning
 
-Return ONLY the numbers (comma-separated) of items that are ACTUAL COMPARISONS. If none are actual comparisons, return "NONE".
+Filter out ONLY:
+- Completely unrelated products
+- Pure specifications with no context
 
-Example response: 2,4,6
+Return the numbers (comma-separated) of items that are RELEVANT. Be inclusive.
+
+Example response: 1,2,3,4,6

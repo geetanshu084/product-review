@@ -1,20 +1,38 @@
 # Price Comparison Feature
 
 ## Overview
-The price comparison feature allows you to compare product prices across multiple e-commerce platforms (Amazon, Flipkart, eBay, Walmart, etc.) using the Serper API. It automatically filters out results from the source platform to show only genuine competitor prices.
+The price comparison feature allows you to compare product prices across multiple e-commerce platforms (Amazon, Flipkart, eBay, Walmart, etc.) using either **DuckDuckGo (free, default)** or **Serper API (Google Shopping)**. It automatically filters out results from the source platform to show only genuine competitor prices.
 
 ## Setup
 
-### 1. Get Serper API Key
+### Choose Your Search Provider
+
+The system supports two search providers:
+
+#### Option A: DuckDuckGo (Default - Free)
+- **Cost**: Completely free, no API key required
+- **Setup**: Works out of the box, no configuration needed
+- **Quality**: Good results from general web search
+- **Note**: Results are parsed from regular search (no dedicated shopping API)
+
+Set in `.env`:
+```bash
+SEARCH_PROVIDER=duckduckgo  # Default, can be omitted
+```
+
+#### Option B: Serper (Google Shopping - Recommended for Best Results)
+- **Cost**: Free tier includes 2,500 searches/month
+- **Setup**: Requires API key from [serper.dev](https://serper.dev/)
+- **Quality**: Premium Google Shopping results with structured price data
+- **Best For**: Production use with high accuracy needs
+
 1. Visit [https://serper.dev/](https://serper.dev/)
 2. Sign up for a free account
 3. Get your API key from the dashboard
-4. Free tier includes 2,500 free searches
 
-### 2. Configure API Key
-Add your Serper API key to the `.env` file:
-
+Set in `.env`:
 ```bash
+SEARCH_PROVIDER=serper
 SERPER_API_KEY=your_serper_api_key_here
 ```
 

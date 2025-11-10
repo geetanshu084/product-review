@@ -12,17 +12,21 @@ from src.utils.search import search_shopping as search_shopping_api
 
 
 class SerperPriceComparison:
-    """Price comparison across multiple e-commerce platforms"""
+    """Price comparison across multiple e-commerce platforms (supports DuckDuckGo or Serper)"""
 
     def __init__(self):
         """
         Initialize the price comparison service
 
-        Note: Search API key is read from SERPER_API_KEY environment variable by the search utility
+        Note: Supports both DuckDuckGo (free, default) and Serper (premium)
+        Configure via SEARCH_PROVIDER environment variable
         """
-        # Validate that API key exists
-        if not os.getenv('SERPER_API_KEY'):
-            raise ValueError("SERPER_API_KEY not found in environment")
+        # Check which provider is configured
+        provider = os.getenv('SEARCH_PROVIDER', 'duckduckgo').lower()
+        if provider == 'serper' and not os.getenv('SERPER_API_KEY'):
+            print("⚠ SERPER_API_KEY not found, will use DuckDuckGo fallback")
+        elif provider == 'duckduckgo':
+            print("✓ Using DuckDuckGo for price comparison (free)")
 
     def search_shopping(
         self,
@@ -48,8 +52,9 @@ class SerperPriceComparison:
         )
 
         # DEBUG: Print raw API response
+        provider = os.getenv('SEARCH_PROVIDER', 'duckduckgo').lower()
         print("\n" + "="*80)
-        print("🔍 DEBUG: RAW SERPER API RESPONSE")
+        print(f"🔍 DEBUG: RAW SEARCH API RESPONSE ({provider.upper()})")
         print("="*80)
         print(f"Response type: {type(raw_response)}")
         print(f"Response keys: {list(raw_response.keys()) if isinstance(raw_response, dict) else 'N/A'}")
@@ -456,30 +461,34 @@ class SerperPriceComparison:
         # Print filtering summary
         print(f"✓ Found {len(normalized_results)} valid results (filtered: {source_platform_filtered_count} from source platform, {filtered_out_count} non-exact matches)")
 
-        # Filter results with valid prices (price > 0) once for all operations
+        # Separate results with and without prices
         valid_price_results = [r for r in normalized_results if r and r["price"] > 0]
+        no_price_results = [r for r in normalized_results if r and r["price"] == 0]
 
-        # Group by platform
-        grouped = self.group_by_platform(valid_price_results)
+        # Group ALL results by platform (including those without prices)
+        grouped = self.group_by_platform(normalized_results)
 
-        # Calculate statistics
+        # Calculate statistics only for results with prices
         stats = self.calculate_price_stats(valid_price_results)
 
-        # Find best deal
-        best_deal = self.find_best_deal(valid_price_results)
+        # Find best deal only from results with prices
+        best_deal = self.find_best_deal(valid_price_results) if valid_price_results else None
 
         # Print summary
         currency = normalized_results[0]['currency'] if normalized_results else 'INR'
         print(f"\n📊 Price Summary:")
         print(f"  Platforms found: {len(grouped)}")
-        print(f"  Price range: {currency} {stats['min_price']:.2f} - {stats['max_price']:.2f}")
-        if best_deal:
-            print(f"  Best deal: {best_deal['platform']} at {best_deal['currency']} {best_deal['price']:.2f}")
-            print(f"  Potential savings: {best_deal['currency']} {best_deal['savings']:.2f} ({best_deal['savings_percent']:.1f}%)")
+        if valid_price_results:
+            print(f"  Price range: {currency} {stats['min_price']:.2f} - {stats['max_price']:.2f}")
+            if best_deal:
+                print(f"  Best deal: {best_deal['platform']} at {best_deal['currency']} {best_deal['price']:.2f}")
+                print(f"  Potential savings: {best_deal['currency']} {best_deal['savings']:.2f} ({best_deal['savings_percent']:.1f}%)")
+        else:
+            print(f"  ⚠ No prices available, but showing {len(no_price_results)} competitor links")
 
         return {
             "price_comparison": grouped,
             "price_stats": stats,
             "best_deal": best_deal,
-            "total_results": len(valid_price_results)
+            "total_results": len(normalized_results)  # Include all results, not just those with prices
         }

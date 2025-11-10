@@ -1,7 +1,29 @@
 # Web Search Integration for External Reviews
 
 ## Overview
-Uses Serper API and Gemini LLM to analyze external product reviews, comparisons, discussions, and news from across the web. Automatically filters out results from the source platform (Amazon/Flipkart) and uses AI to remove irrelevant content.
+Uses **DuckDuckGo (free, default)** or **Serper API (Google)** with LLM to analyze external product reviews, comparisons, discussions, and news from across the web. Automatically filters out results from the source platform (Amazon/Flipkart) and uses AI to remove irrelevant content.
+
+## Search Provider Configuration
+
+The system supports two search providers:
+
+### DuckDuckGo (Default - Free)
+- **Cost**: Completely free, no API key required
+- **Setup**: Works automatically with `SEARCH_PROVIDER=duckduckgo` (default)
+- **Quality**: Good general web search results
+- **Best For**: Development, testing, and cost-conscious production
+
+### Serper (Google - Premium)
+- **Cost**: Free tier with 2,500 searches/month from [serper.dev](https://serper.dev/)
+- **Setup**: Requires `SEARCH_PROVIDER=serper` and `SERPER_API_KEY`
+- **Quality**: Premium Google search results
+- **Best For**: Production use requiring highest accuracy
+
+Configure in `.env`:
+```bash
+SEARCH_PROVIDER=duckduckgo  # or 'serper'
+SERPER_API_KEY=your_key     # only if using serper
+```
 
 ## Features Implemented
 
@@ -31,7 +53,7 @@ Web search is integrated into the workflow orchestrator:
 - Cached in Redis along with product data (24-hour TTL)
 
 ```python
-# Web search enabled automatically if SERPER_API_KEY exists in .env
+# Web search enabled automatically with configured provider (DuckDuckGo or Serper)
 # Runs as part of unified workflow via /api/v1/products/scrape-and-analyze endpoint
 ```
 

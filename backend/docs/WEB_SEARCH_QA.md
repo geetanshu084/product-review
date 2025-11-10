@@ -79,18 +79,38 @@ Final Answer: [provides comparison]
 
 ## Setup
 
-### 1. Get Serper API Key
-1. Visit [https://serper.dev/](https://serper.dev/)
-2. Sign up for a free account
-3. Get your API key from the dashboard
-4. Free tier includes 2,500 free searches
+### 1. Choose Search Provider
 
-### 2. Configure API Key
-Add your Serper API key to the `.env` file:
+The chatbot supports two search providers:
+
+#### Option A: DuckDuckGo (Default - Free, No API Key)
+- **Cost**: Completely free
+- **Setup**: No API key required
+- **Rate Limits**: Reasonable limits for personal use
+- **Quality**: Good quality results from DuckDuckGo search
+
+#### Option B: Serper (Google Search - API Key Required)
+- **Cost**: Free tier includes 2,500 searches/month
+- **Setup**: Requires API key from [serper.dev](https://serper.dev/)
+- **Rate Limits**: 2,500 searches/month (free tier)
+- **Quality**: Premium Google search results
+
+### 2. Configure Search Provider
+
+Add search provider configuration to the `.env` file:
 
 ```bash
+# Search Provider Configuration
+# Options: duckduckgo (default, free) or serper (requires API key)
+SEARCH_PROVIDER=duckduckgo
+
+# Only needed if using SEARCH_PROVIDER=serper
 SERPER_API_KEY=your_serper_api_key_here
 ```
+
+**Switching between providers:**
+- For DuckDuckGo (default): Set `SEARCH_PROVIDER=duckduckgo` or leave unset
+- For Serper: Set `SEARCH_PROVIDER=serper` and add your `SERPER_API_KEY`
 
 ### 3. Configure LLM Provider
 Add LLM provider configuration to `.env`:
@@ -106,7 +126,9 @@ GOOGLE_API_KEY=your_google_api_key_here
 ```
 
 ### 4. Enable Web Search
-Web search is enabled automatically when SERPER_API_KEY is set in `.env`:
+Web search is enabled automatically based on your `SEARCH_PROVIDER` configuration:
+- **DuckDuckGo**: Enabled automatically, no API key needed
+- **Serper**: Enabled when `SERPER_API_KEY` is set in `.env`
 
 ## Web Search Behavior
 
@@ -221,7 +243,9 @@ The chatbot is implemented in `src/chatbot.py` using LangChain's standard compon
 - **Memory**: `ConversationBufferMemory` with `RedisChatMessageHistory` backend
 - **Agent Framework**: LangChain tool-calling agent (`create_tool_calling_agent`)
 - **LLM**: Configurable provider (Google Gemini, OpenAI, Anthropic, etc.)
-- **Tool**: `Search` tool using GoogleSerperAPIWrapper
+- **Tool**: `Search` tool using either:
+  - `duckduckgo-search` (default, free)
+  - `GoogleSerperAPIWrapper` (requires API key)
 - **Executor**: `AgentExecutor` with memory, max 10 iterations
 
 **What LangChain Handles Automatically:**
@@ -336,9 +360,10 @@ The chatbot is integrated into the React frontend via FastAPI endpoints:
 - ✅ FastAPI endpoints for chat operations
 
 **Future Enhancements:**
+- ✅ **COMPLETED**: Integration with DuckDuckGo (free alternative to Serper)
 - Custom search filters (date range, specific websites)
 - Streaming responses for better UX
 - User control over when to trigger search
-- Integration with other search APIs (Bing, DuckDuckGo)
+- Integration with other search APIs (Bing, Brave Search)
 - Function-calling for structured data extraction
 - Voice input/output support
